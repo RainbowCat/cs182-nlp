@@ -4,6 +4,8 @@
 *Icon*
 .DS_Store
 *.tar
+*.json
+*.jsonl
 
 starter
 dataset
