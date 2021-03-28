@@ -1,2 +1,11 @@
-.DS_Store
+.ipynb_checkpoints
 .vscode
+
+*Icon*
+.DS_Store
+*.tar
+
+starter
+dataset
+yelp_dataset
+output
