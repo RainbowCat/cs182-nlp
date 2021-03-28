@@ -2,7 +2,7 @@
 .vscode
 
 *Icon*
-.DS_Store
+**/.DS_Store
 *.tar
 *.json
 *.jsonl
