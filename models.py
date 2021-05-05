@@ -20,6 +20,7 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+MAX_LEN = 256
 
 class LanguageModel(nn.Module):
     def __init__(
