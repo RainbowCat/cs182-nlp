@@ -20,6 +20,8 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+from utils import *
+
 
 def load_json(file_path, filter_function=lambda x: True):
     """

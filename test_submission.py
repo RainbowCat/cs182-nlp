@@ -4,7 +4,8 @@ import sys
 
 def eval(text):
     # This is where you call your model to get the number of stars output
-    return 1.0
+    model = torch.load("models/submission.pt")
+    return model(text)
 
 
 if len(sys.argv) > 1:
