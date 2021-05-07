@@ -12,3 +12,5 @@ dataset
 yelp_dataset
 models
 archive
+
+Pipfile.lock
