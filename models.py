@@ -1,4 +1,5 @@
 import copy
+import nltk
 import json
 import os
 import random
@@ -14,12 +15,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import tqdm
-from keras.preprocessing.sequence import pad_sequences
 from numpy.lib.function_base import vectorize
 from segtok import tokenizer
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
-from transfomers import BertForSequenceClassification, BertTokenizer
+from transformers import BertForSequenceClassification, BertTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from utils import *
@@ -28,6 +28,7 @@ from utils import *
 class LanguageModel(nn.Module):
     def __init__(
         self,
+        args,
         use_vader,
         use_bert,
         use_cnn,
@@ -76,9 +77,11 @@ class LanguageModel(nn.Module):
         conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
 
         self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
+        max_pool_2d_out_height = conv2d_out_Hout // conv2d_out_Hout
         max_pool_2d_out_length = conv2d_out_Wout // 1
 
         self.lstm = None
+        self.sentiments = {}
         if use_vader:
             self.lstm = nn.LSTM(
                 input_size=1,
@@ -87,6 +90,26 @@ class LanguageModel(nn.Module):
                 batch_first=True,
                 dropout=dropout,
             )
+            # Create dictionary of all the reviews' Vader temporarily
+            review_iterator = tqdm.notebook.tqdm(
+                yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
+            )
+
+            for i, review in review_iterator:
+                # Tokenize by TOKENIZER
+                review_text = review["text"]
+                # VADER
+                sentence_list = nltk.tokenize.sent_tokenize(review_text)
+                review_sentiment_sentence = []
+                analyzer= SentimentIntensityAnalyzer()
+                for sentence in sentence_list:
+                    vs = analyzer.polarity_scores(sentence)
+                    review_sentiment_sentence.append(vs["compound"])
+                # TODO should last arg be self.vader_size?
+                padded, _ = data.pad_sequence(review_sentiment_sentence, 0, vocab_size)
+                self.sentiments[review["review_id"]] = padded
+                if len(self.sentiments) < 20:
+                    print(len(self.sentiments), self.sentiments[review["review_id"]])
         else:
             vader_size = 0
 
@@ -115,13 +138,12 @@ class LanguageModel(nn.Module):
         # print(result.shape)
         input1 = result.squeeze(1).squeeze(1)
 
-        batch_size, vader_len = vader.shape
-        # print(x.reshape(batch_size, vader_len, 1).shape)
-        output, _ = self.lstm(vader.reshape(batch_size, vader_len, 1))
-        # print(output.shape)
-        input2 = output.squeeze(2)
-
         if self.lstm:
+            batch_size, vader_len = vader.shape
+            # print(x.reshape(batch_size, vader_len, 1).shape)
+            output, _ = self.lstm(vader.reshape(batch_size, vader_len, 1))
+            # print(output.shape)
+            input2 = output.squeeze(2)
             combined_input = (input1, input2)
         else:
             combined_input = (input1,)  # Tuples need the stray comma
@@ -134,5 +156,6 @@ class LanguageModel(nn.Module):
         return logits
 
     def loss_fn(self, prediction, target):
-        loss_criterion = nn.CrossEntropyLoss(reduction="none")
+        loss_criterion = nn.CrossEntropyLoss()
+        print(prediction.shape,target.shape)
         return torch.mean(loss_criterion(prediction, target))

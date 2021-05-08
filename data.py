@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import nltk
 import numpy as np
 import pandas as pd
 import torch
@@ -14,13 +15,26 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import tqdm
-from keras.preprocessing.sequence import pad_sequences
 from segtok import tokenizer
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from utils import *
+
+nltk.download("punkt")
+
+
+def batch_to_torch_long(*batches):
+    if len(batches) == 1:
+        return torch.LongTensor(batches[0])
+    return [torch.LongTensor(batch) for batch in batches]
+
+
+def batch_to_torch_float(*batches):
+    if len(batches) == 1:
+        return torch.FloatTensor(batches[0])
+    return [torch.FloatTensor(batch) for batch in batches]
 
 
 def load_json(file_path, filter_function=lambda x: True):
@@ -63,11 +77,11 @@ def tokenize(data):
     return token_set
 
 
-def tokenize_review(tokenizer, review_text):
+def tokenize_review(args, tokenizer, review_text):
     encodings = tokenizer.encode_plus(
         review_text,
         add_special_tokens=True,
-        max_length=MAX_LEN,
+        max_length=args.max_len,
         return_token_type_ids=False,
         return_attention_mask=False,
         truncation=True,
@@ -95,29 +109,57 @@ batch_to_torch = lambda b_in, b_targets, b_mask: (
 )
 
 # formatting
-def format_reviews(tokenizer, datatable, indices=None):
+
+
+def format_reviews(
+    args, tokenizer, datatable, indices=None, task_bar=False, review_sentiment_dict=None
+):
     encoded_reviews = []
     encoded_reviews_mask = []
-    reviews_to_process = datatable[["text", "stars"]]
+    review_sentiment = []
+    reviews_to_process = datatable[["review_id", "text", "stars"]]
+    # display(reviews_to_process)
     if indices is not None:
         reviews_to_process = reviews_to_process.iloc[indices]
 
-    for review_text in reviews_to_process["text"]:
-        numerized = tokenize_review(tokenizer, review_text)
-        padded, mask = pad_sequence(numerized, 0, MAX_LEN)
+    review_iterator = reviews_to_process.iterrows()
+    if task_bar:
+        review_iterator = tqdm.notebook.tqdm(
+            reviews_to_process.iterrows(), total=reviews_to_process.shape[0]
+        )
+
+    analyzer = SentimentIntensityAnalyzer()
+    for i, review in review_iterator:
+        # Tokenize by TOKENIZER
+        review_text = review["text"]
+        numerized = tokenize_review(args, tokenizer, review_text)
+        padded, mask = pad_sequence(numerized, 0, args.max_len)
         encoded_reviews.append(padded)
         encoded_reviews_mask.append(mask)
+        # VADER
+        if review_sentiment_dict is None:
+            sentence_list = nltk.tokenize.sent_tokenize(review_text)
+            review_sentiment_sentence = []
 
-    (
-        torch_encoded_reviews,
-        torch_encoded_reviews_target,
-        torch_encoded_reviews_mask,
-    ) = batch_to_torch(
-        encoded_reviews, reviews_to_process["stars"], encoded_reviews_mask
+            for sentence in sentence_list:
+                vs = analyzer.polarity_scores(sentence)
+                review_sentiment_sentence.append(vs["compound"])
+            padded, _ = pad_sequence(review_sentiment_sentence, 0, args.max_len_vader)
+            review_sentiment.append(padded)
+        else:
+            if review["review_id"] in review_sentiment_dict:
+                review_sentiment.append(review_sentiment_dict[review["review_id"]])
+
+    torch_encoded_reviews, torch_encoded_reviews_target = batch_to_torch_long(
+        encoded_reviews, reviews_to_process["stars"].values
+    )
+    torch_encoded_reviews_mask, torch_review_sentiment = batch_to_torch_float(
+        encoded_reviews_mask, review_sentiment
     )
     return (
         torch_encoded_reviews,
         torch_encoded_reviews_target,
+        torch_review_sentiment,
         torch_encoded_reviews_mask,
     )
 

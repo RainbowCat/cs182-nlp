@@ -15,6 +15,12 @@ huggingface-hub = "*"
 vadersentiment = "*"
 tensorflow = "*"
 tensorboard = "*"
+segtok = "*"
+transformers = "*"
+keras = "*"
+nltk = "*"
+sentencepiece = "*"
+ipykernel = "*"
 
 [dev-packages]
 

@@ -14,7 +14,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import tqdm
-from keras.preprocessing.sequence import pad_sequences
 from segtok import tokenizer
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
