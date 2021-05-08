@@ -21,6 +21,7 @@ keras = "*"
 nltk = "*"
 sentencepiece = "*"
 ipykernel = "*"
+ipywidgets = "*"
 
 [dev-packages]
 

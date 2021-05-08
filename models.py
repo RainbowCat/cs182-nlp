@@ -156,6 +156,6 @@ class LanguageModel(nn.Module):
         return logits
 
     def loss_fn(self, prediction, target):
-        loss_criterion = nn.CrossEntropyLoss()
+        loss_criterion = nn.CrossEntropyLoss(reduction="none")
         print(prediction.shape,target.shape)
         return torch.mean(loss_criterion(prediction, target))

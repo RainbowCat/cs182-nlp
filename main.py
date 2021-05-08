@@ -59,7 +59,6 @@ parser.add_argument("--use-cnn", default=False, type=bool)
 
 
 args = parser.parse_args()
-TORCH_CHECKPOINT_MODEL = Path("output/training_checkpoint_oscar_vader.pt")
 DATA_FOLDER = Path("starter")
 OUT_FOLDER = Path("models")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -226,7 +225,7 @@ for epoch in range(args.epochs):
                     "losses": losses,
                     "accuracies": accuracies,
                 },
-                str(TORCH_CHECKPOINT_MODEL),
+                OUT_FOLDER / str(time.time()),
             )
             run_validation(model)
             print(
