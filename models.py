@@ -28,7 +28,6 @@ from utils import *
 class LanguageModel(nn.Module):
     def __init__(
         self,
-        args,
         use_vader,
         use_bert,
         use_cnn,
@@ -101,7 +100,7 @@ class LanguageModel(nn.Module):
                 # VADER
                 sentence_list = nltk.tokenize.sent_tokenize(review_text)
                 review_sentiment_sentence = []
-                analyzer= SentimentIntensityAnalyzer()
+                analyzer = SentimentIntensityAnalyzer()
                 for sentence in sentence_list:
                     vs = analyzer.polarity_scores(sentence)
                     review_sentiment_sentence.append(vs["compound"])
@@ -157,5 +156,15 @@ class LanguageModel(nn.Module):
 
     def loss_fn(self, prediction, target):
         loss_criterion = nn.CrossEntropyLoss(reduction="none")
-        print(prediction.shape,target.shape)
-        return torch.mean(loss_criterion(prediction, target))
+        # print(prediction.shape,target.shape)
+        return torch.mean(loss_criterion(prediction, target - 1))
+
+
+# def save_model():
+#     torch.save({'epoch': EPOCHS,
+#                 't': (DATASET.shape[0] // BATCH_SIZE)+1,
+#                 'model_state_dict': model.state_dict(),
+#                 'optimizer_state_dict': optimizer.state_dict(),
+#                 'losses': losses,
+#                 'accuracies': accuracies
+#                 }, str(TORCH_CHECKPOINT_MODEL))

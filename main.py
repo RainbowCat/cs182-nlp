@@ -57,12 +57,11 @@ parser.add_argument("--use-vader", default=False, type=bool)
 parser.add_argument("--use-bert", default=False, type=bool)
 parser.add_argument("--use-cnn", default=False, type=bool)
 
-
 args = parser.parse_args()
 DATA_FOLDER = Path("starter")
 OUT_FOLDER = Path("models")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
+print("running on " + device)
 list_to_device = lambda th_obj: [tensor.to(device) for tensor in th_obj]
 
 
@@ -155,7 +154,6 @@ train_reviews, validate_reviews, test_reviews = data.train_validate_test_split(
 )
 
 model = models.LanguageModel(
-    args,
     vocab_size=args.max_len,
     rnn_size=256,
     vader_size=args.max_len_vader,
@@ -198,9 +196,10 @@ for epoch in range(args.epochs):
             batch_target_mask,
             batch_review_sentiment,
         ) = list_to_device(
-            (batch_input, batch_target, batch_target_mask, batch_review_sentiment)
+            batch_input, batch_target, batch_target_mask, batch_review_sentiment
         )
 
+        # forward pass
         prediction = model(batch_input, batch_review_sentiment)
         loss = model.loss_fn(prediction, batch_target)
         losses.append(loss.item())
