@@ -19,8 +19,7 @@ from functools import lru_cache, reduce
 from itertools import chain, product
 from os import PathLike
 from pathlib import Path
-from typing import (Dict, Iterable, List, Mapping, NamedTuple, Optional,
-                    Sequence)
+from typing import Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence
 
 import huggingface_hub
 import matplotlib.pyplot as plt
@@ -54,7 +53,7 @@ args = parser.parse_args()
 DATA_FOLDER = Path("starter")
 OUT_FOLDER = Path("models")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("running on " + device)
+print("running on " + str(device))
 list_to_device = lambda th_obj: [tensor.to(device) for tensor in th_obj]
 
 
@@ -189,7 +188,7 @@ for epoch in range(args.epochs):
             batch_target_mask,
             batch_review_sentiment,
         ) = list_to_device(
-            batch_input, batch_target, batch_target_mask, batch_review_sentiment
+            (batch_input, batch_target, batch_target_mask, batch_review_sentiment)
         )
 
         # forward pass

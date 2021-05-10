@@ -27,6 +27,7 @@ from utils import *
 
 yelp_reviews = data.load_json("starter/yelp_review_training_dataset.jsonl")
 
+
 class LanguageModel(nn.Module):
     def __init__(
         self,
@@ -91,7 +92,7 @@ class LanguageModel(nn.Module):
                 batch_first=True,
                 dropout=dropout,
             )
-            # Create dictionary of all the reviews' Vader temporarily
+            # FIXME: Create dictionary of all the reviews' Vader temporarily
             review_iterator = tqdm.tqdm(
                 yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
             )
@@ -131,9 +132,7 @@ class LanguageModel(nn.Module):
         out = self.base_model(vectorized_words)
         out_hidden = out.last_hidden_state
         batches_len, word_len, embedding_len = out_hidden.shape
-        out_hidden = out_hidden.reshape(
-            batches_len, 1, word_len, embedding_len
-        )
+        out_hidden = out_hidden.reshape(batches_len, 1, word_len, embedding_len)
         conv2d_out = self.conv2D_layer(out_hidden)
         result = self.max_pool_2d(conv2d_out)
         # print(result.shape)
@@ -155,7 +154,7 @@ class LanguageModel(nn.Module):
         logits = self.dense(lstm_drop)
         logits = self.output(logits)
         return logits
-    
+
     def predict(self, vectorized_words, vadar_sentiments):
         logits = self.forward(vectorized_words, vadar_sentiments)
         prediction = torch.argmax(axis=1)
