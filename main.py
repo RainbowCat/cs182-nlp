@@ -22,6 +22,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence
 
+from torch.utils.data import DataLoader, random_split
 import huggingface_hub
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,7 +40,6 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import data
 import models
-import utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--max-len", type=int, default=128)
@@ -71,17 +71,7 @@ train_reviews, validate_reviews, test_reviews = data.train_validate_test_split(
     yelp_reviews, train_ratio, validate_ratio
 )
 
-model = models.LanguageModel(
-    vocab_size=args.max_len,
-    rnn_size=256,
-    vader_size=args.max_len_vader,
-    use_vader=args.use_vader,
-    use_bert=args.use_bert,
-    use_cnn=args.use_cnn,
-)
-
-
-def test_eval(model, use_all=False, mode="val"):
+def test_eval(args, model, use_all=False, mode="val"):
     reviews_dataset = None
     if mode == "val":
         print("Running Validation")
@@ -153,6 +143,14 @@ def test_eval(model, use_all=False, mode="val"):
     print(mode, "Evaluation set loss:", loss_val, mode, "Accuracy set %:", accuracy_val)
 
 
+model = models.LanguageModel(
+    vocab_size=args.max_len,
+    vader_size=args.max_len_vader,
+    use_vader=args.use_vader,
+    use_bert=args.use_bert,
+    use_cnn=args.use_cnn,
+)
+
 # start training
 model.train()
 
@@ -161,9 +159,11 @@ losses = []
 accuracies = []
 t_start = 0
 
-optimizer = optim.Adam(model.parameters())
+lr = 1e-4
+optimizer = optim.Adam(model.parameters(), lr=lr)
 model = model.to(device)
 
+print(f"start training: {args.epochs=}, {lr=}")
 for epoch in range(args.epochs):
     indices = np.random.permutation(train_reviews.shape[0])
 
@@ -172,25 +172,30 @@ for epoch in range(args.epochs):
     )
 
     for i in tqdm.trange(dataset_batch_cap):
-        # batch
-        batch = data.format_reviews(
+        # batching
+        (
+            batch_input,
+            batch_target,
+            batch_review_sentiments,
+            batch_target_mask,
+        ) = data.format_reviews(
             args,
             model.tokenizer,
             train_reviews,
             indices[i * args.batch_size : (i + 1) * args.batch_size],
         )
-        batch_input, batch_target, batch_review_sentiment, batch_target_mask = batch
         (
             batch_input,
             batch_target,
             batch_target_mask,
-            batch_review_sentiment,
+            batch_review_sentiments,
         ) = list_to_device(
-            (batch_input, batch_target, batch_target_mask, batch_review_sentiment)
+            (batch_input, batch_target, batch_target_mask, batch_review_sentiments)
         )
 
         # forward pass
-        prediction = model(batch_input, batch_review_sentiment)
+        # print(batch_input.shape, batch_review_sentiments.shape)
+        prediction = model(batch_input, batch_review_sentiments)
         loss = model.loss_fn(prediction, batch_target)
         losses.append(loss.item())
         accuracy = torch.mean(
@@ -205,18 +210,10 @@ for epoch in range(args.epochs):
 
         # visualize data
         if i % 1000 == 0 and i != t_start:
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "t": i,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "losses": losses,
-                    "accuracies": accuracies,
-                },
-                OUT_FOLDER / str(time.time()),
+            models.save_model(
+                args, OUT_FOLDER / str(time.time()), model, losses, accuracies
             )
-            test_eval(model)
+            models.test_eval(args, model)
             print(
                 f"Epoch: {epoch} Iteration: {i} Train Loss: {np.mean(losses[-10:])} Train Accuracy: {np.mean(accuracies[-10:])}"
             )

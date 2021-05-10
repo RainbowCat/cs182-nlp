@@ -21,12 +21,12 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from transformers import BertForSequenceClassification, BertTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
+import pytorch_lightning as pl
 import data
 from utils import *
 
 
-class LanguageModel(nn.Module):
+class LanguageModel(pl.LightningModule):
     def __init__(
         self,
         use_vader,
@@ -41,6 +41,7 @@ class LanguageModel(nn.Module):
         self.use_vader = use_vader
         self.use_bert = use_bert
         self.use_cnn = use_cnn
+        self.vocab_size = vocab_size
 
         # Create an embedding layer, with 768 hidden layers
         if use_bert:
@@ -83,8 +84,10 @@ class LanguageModel(nn.Module):
         max_pool_2d_out_length = conv2d_out_Wout // 1
 
         self.lstm = None
+        self.vader_size = 0
         # self.sentiments = {}
         if use_vader:
+            self.vader_size = vader_size
             self.lstm = nn.LSTM(
                 input_size=1,
                 hidden_size=1,
@@ -112,8 +115,6 @@ class LanguageModel(nn.Module):
             #         self.sentiments[review["review_id"]] = padded
             #         if len(self.sentiments) < 20:
             #             print(len(self.sentiments), self.sentiments[review["review_id"]])
-        else:
-            self.vader_size = 0
 
         self.dropout = nn.Dropout(dropout)
         # print(max_pool_2d_out_length + vader_size)
@@ -124,9 +125,33 @@ class LanguageModel(nn.Module):
             nn.Linear(max_pool_2d_out_length + vader_size, hidden_layer_dense),
             nn.ReLU(),
         )
+        print(max_pool_2d_out_height + vader_size, hidden_layer_dense)
         self.output = nn.Linear(
-            hidden_layer_dense, 6
+            hidden_layer_dense, 5
         )  # classify yelp_reviews into 5 ratings
+    def training_step(self, batch, batch_idx):
+        (
+            batch_input,
+            batch_target,
+            batch_review_sentiments,
+            batch_target_mask,
+        ) = batch
+        (
+            batch_input,
+            batch_target,
+            batch_target_mask,
+            batch_review_sentiments,
+        ) = list_to_device(
+            (batch_input, batch_target, batch_target_mask, batch_review_sentiments)
+        )
+        prediction = model(batch_input, batch_review_sentiments)
+        loss = self.loss_fn(prediction, batch_target)
+        self.log('train_loss', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
 
     def forward(self, words, sentiments):
         out = self.base_model(words)
@@ -146,10 +171,28 @@ class LanguageModel(nn.Module):
             combined_input = (input1,)  # Tuples need the stray comma
 
         combined_input = torch.cat(combined_input, dim=1)
-
+        
         lstm_drop = self.dropout(combined_input)
-        logits = self.dense(lstm_drop)
+        print("dropped")
+
+        conv2d_c_in = 1
+        conv2d_c_out = 1
+        conv2d_kernel_W = 5  # along Embedding Length
+        conv2d_kernel_H = 5  # along Word Length
+        conv2d_out_Hout = self.vocab_size - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
+        conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
+
+        self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
+        max_pool_2d_out_height = conv2d_out_Hout // conv2d_out_Hout
+        max_pool_2d_out_length = conv2d_out_Wout // 1
+
+        logits = nn.Linear(max_pool_2d_out_length + self.vader_size, 100)(lstm_drop)
+        print("hi")
+        logits = nn.ReLU()(logits)
+        # logits = self.dense(lstm_drop)
+        # print("logits")
         logits = self.output(logits)
+        print("logits 2", logits.shape)
         return logits
 
     def predict(self, vectorized_words, vadar_sentiments):
@@ -174,3 +217,5 @@ def save_model(args, filename, model, losses, accuracies):
         },
         filename,
     )
+
+
