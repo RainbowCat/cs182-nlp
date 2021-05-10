@@ -22,7 +22,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence
 
-from torch.utils.data import DataLoader, random_split
 import huggingface_hub
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,6 +33,7 @@ import torchvision
 import tqdm
 from segtok import tokenizer
 from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, models, transforms
 from transformers import BertForSequenceClassification, BertTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -51,6 +51,9 @@ parser.add_argument("--use-bert", default=False, type=bool)
 parser.add_argument("--use-cnn", default=False, type=bool)
 
 args = parser.parse_args()
+print("=== SETUP ===")
+print(args)
+
 DATA_FOLDER = Path("starter")
 OUT_FOLDER = Path("models")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -70,6 +73,7 @@ assert train_ratio + validate_ratio + test_ratio == 1.0
 train_reviews, validate_reviews, test_reviews = data.train_validate_test_split(
     yelp_reviews, train_ratio, validate_ratio
 )
+
 
 def test_eval(args, model, use_all=False, mode="val"):
     reviews_dataset = None
@@ -102,8 +106,8 @@ def test_eval(args, model, use_all=False, mode="val"):
         (
             batch_input_val,
             batch_target_val,
-            batch_review_sentiment_val,
             batch_target_mask_val,
+            batch_review_sentiment_val,
         ) = data.format_reviews(
             args,
             model.tokenizer,
@@ -143,6 +147,7 @@ def test_eval(args, model, use_all=False, mode="val"):
     print(mode, "Evaluation set loss:", loss_val, mode, "Accuracy set %:", accuracy_val)
 
 
+print("creating model")
 model = models.LanguageModel(
     vocab_size=args.max_len,
     vader_size=args.max_len_vader,
@@ -152,6 +157,7 @@ model = models.LanguageModel(
 )
 
 # start training
+print("=== TRAINING ===")
 model.train()
 
 since = time.time()
@@ -163,7 +169,7 @@ lr = 1e-4
 optimizer = optim.Adam(model.parameters(), lr=lr)
 model = model.to(device)
 
-print(f"start training: {args.epochs=}, {lr=}")
+print(f"params: {args.epochs=}, {lr=}")
 for epoch in range(args.epochs):
     indices = np.random.permutation(train_reviews.shape[0])
 
@@ -176,8 +182,8 @@ for epoch in range(args.epochs):
         (
             batch_input,
             batch_target,
-            batch_review_sentiments,
             batch_target_mask,
+            batch_review_sentiments,
         ) = data.format_reviews(
             args,
             model.tokenizer,
@@ -218,6 +224,6 @@ for epoch in range(args.epochs):
                 f"Epoch: {epoch} Iteration: {i} Train Loss: {np.mean(losses[-10:])} Train Accuracy: {np.mean(accuracies[-10:])}"
             )
 
-
+print("=== VALIDATION ===")
 # set model to evaluation model
 model.eval()

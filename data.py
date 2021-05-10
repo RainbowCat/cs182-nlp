@@ -5,11 +5,15 @@ import random
 import sys
 import time
 from pathlib import Path
-
+from typing import Optional
+from torch.utils import data
+from torch.utils.data import Dataset, DataLoader
+from torchvision import datasets
 import matplotlib.pyplot as plt
 import nltk
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -43,7 +47,6 @@ def load_json(file_path, filter_function=lambda x: True):
     filter_function - a data selection function, returns True to ADD a data point
     """
     result = []
-
     try:
         with open(file_path, "r") as f:
             for line in f:
@@ -51,10 +54,11 @@ def load_json(file_path, filter_function=lambda x: True):
                 if not filter_function(json_line):
                     # Disallow via opposite of allow
                     continue
-                result.append(json_line)  # each line is one data point dictionary
+                result.append(
+                    json_line
+                )  # one data point represented as a dictionary per line
         return pd.DataFrame.from_records(result)
         # return result
-
     except IOError:
         print(f"cannot open {file_path}")
         return None
@@ -158,8 +162,8 @@ def format_reviews(args, tokenizer, datatable, indices=None, task_bar=False):
     return (
         torch_encoded_reviews,
         torch_encoded_reviews_target,
-        torch_review_sentiment,
         torch_encoded_reviews_mask,
+        torch_review_sentiment,
     )
 
 
@@ -179,3 +183,36 @@ def train_validate_test_split(df, train_percent=0.6, validate_percent=0.2, seed=
     test = df.iloc[perm[validate_end:]]
 
     return train, validate, test
+
+
+class YelpDataset(Dataset):
+    def __init__(self, data_path):
+        self.yelp_reviews = load_json(self.data_dir, filter_function=lambda x: True)
+
+    def __len__(self):
+        return len(self.yelp_reviews)
+
+    def __getitem__(self, idx):
+        return self.yelp_reviews.iloc["text"][idx]
+
+
+class YelpDataModule(pl.LightningDataModule):
+    def __init__(self, args, data_path: str):
+        super().__init__()
+        self.data_path = data_path
+        self.batch_size = args.batch_size
+
+    def setup(self, tokenizer, stage: Optional[str] = None):
+        full_dataset = YelpDataset(self.data_path)
+        self.train_set, self.val_set, self.test_set = train_validate_test_split(
+            full_dataset
+        )
+
+    def train_dataloader(self):
+        return DataLoader(self.train_set, batch_size=self.batch_size)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_set, batch_size=self.batch_size)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_set, batch_size=self.batch_size)

@@ -35,6 +35,7 @@ model.eval()
 
 analyzer = SentimentIntensityAnalyzer()
 
+
 def predict_stars(text):
     """
     text - a SINGLE texts

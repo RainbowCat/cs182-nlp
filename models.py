@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import nltk
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,7 +22,7 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from transformers import BertForSequenceClassification, BertTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import pytorch_lightning as pl
+
 import data
 from utils import *
 
@@ -129,6 +130,7 @@ class LanguageModel(pl.LightningModule):
         self.output = nn.Linear(
             hidden_layer_dense, 5
         )  # classify yelp_reviews into 5 ratings
+
     def training_step(self, batch, batch_idx):
         (
             batch_input,
@@ -144,9 +146,9 @@ class LanguageModel(pl.LightningModule):
         ) = list_to_device(
             (batch_input, batch_target, batch_target_mask, batch_review_sentiments)
         )
-        prediction = model(batch_input, batch_review_sentiments)
+        prediction = self.forward(batch_input, batch_review_sentiments)
         loss = self.loss_fn(prediction, batch_target)
-        self.log('train_loss', loss)
+        self.log("train_loss", loss)
         return loss
 
     def configure_optimizers(self):
@@ -171,7 +173,7 @@ class LanguageModel(pl.LightningModule):
             combined_input = (input1,)  # Tuples need the stray comma
 
         combined_input = torch.cat(combined_input, dim=1)
-        
+
         lstm_drop = self.dropout(combined_input)
         print("dropped")
 
@@ -179,7 +181,9 @@ class LanguageModel(pl.LightningModule):
         conv2d_c_out = 1
         conv2d_kernel_W = 5  # along Embedding Length
         conv2d_kernel_H = 5  # along Word Length
-        conv2d_out_Hout = self.vocab_size - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
+        conv2d_out_Hout = (
+            self.vocab_size - ((conv2d_kernel_H - 1) // 2) * 2
+        )  # Vocab Size
         conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
 
         self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
@@ -217,5 +221,3 @@ def save_model(args, filename, model, losses, accuracies):
         },
         filename,
     )
-
-
