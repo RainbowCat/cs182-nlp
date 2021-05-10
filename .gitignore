@@ -6,6 +6,7 @@
 *.tar
 *.json
 *.jsonl
+*.pt
 
 starter
 dataset
