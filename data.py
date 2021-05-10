@@ -28,19 +28,7 @@ from utils import *
 
 nltk.download("punkt")
 
-
-def batch_to_torch_long(*batches):
-    if len(batches) == 1:
-        return torch.LongTensor(batches[0])
-    return [torch.LongTensor(batch) for batch in batches]
-
-
-def batch_to_torch_float(*batches):
-    if len(batches) == 1:
-        return torch.FloatTensor(batches[0])
-    return [torch.FloatTensor(batch) for batch in batches]
-
-
+# loading
 def load_json(file_path, filter_function=lambda x: True):
     """
     file_path - full path of the file to read from
@@ -65,24 +53,8 @@ def load_json(file_path, filter_function=lambda x: True):
 
 
 # tokenizing
-def tokenize(data):
-    """
-    data - an iterable of sentences
-    """
-    token_set = set()
-    i = 0
-    for sentences in data:
-        if i % 1000 == 0:
-            print(i, end=", " if i % 15000 != 0 else "\n")
-        tokenized = tokenizer.word_tokenizer(sentences.lower())
-        for token in tokenized:
-            token_set.add(token)
-        i += 1
-    return token_set
-
-
 def tokenize_review(args, tokenizer, review_text):
-    encodings = tokenizer.encode_plus(
+    encodings = tokenizer.encode_plus(  # TODO __call__() should be used instead
         review_text,
         add_special_tokens=True,
         max_length=args.max_len,
@@ -95,7 +67,7 @@ def tokenize_review(args, tokenizer, review_text):
 
 
 # padding
-def pad_sequence(numerized, pad_index, to_length, beginning=True):
+def pad_sequence(numerized, pad_index, to_length, beginning=False):
     pad = numerized[:to_length]
     if beginning:
         padded = [pad_index] * (to_length - len(pad)) + pad
@@ -112,9 +84,20 @@ batch_to_torch = lambda b_in, b_targets, b_mask: (
     torch.FloatTensor(b_mask),
 )
 
+
+def batch_to_torch_long(*batches):
+    if len(batches) == 1:
+        return torch.LongTensor(batches[0])
+    return [torch.LongTensor(batch) for batch in batches]
+
+
+def batch_to_torch_float(*batches):
+    if len(batches) == 1:
+        return torch.FloatTensor(batches[0])
+    return [torch.FloatTensor(batch) for batch in batches]
+
+
 # formatting
-
-
 def format_reviews(args, tokenizer, datatable, indices=None, task_bar=False):
     encoded_reviews = []
     encoded_reviews_mask = []
