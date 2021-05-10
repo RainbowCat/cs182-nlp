@@ -20,7 +20,8 @@ from functools import lru_cache, reduce
 from itertools import chain, product
 from os import PathLike
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence
+from typing import (Dict, Iterable, List, Mapping, NamedTuple, Optional,
+                    Sequence)
 
 import huggingface_hub
 import matplotlib.pyplot as plt
@@ -61,9 +62,11 @@ print("running on " + str(device))
 list_to_device = lambda th_obj: [tensor.to(device) for tensor in th_obj]
 
 
-# Higher bound settings: args.max_len = 256 and args.batch_size = 16
-yelp_reviews = data.load_json(DATA_FOLDER / "yelp_review_training_dataset.jsonl")
-print("loaded", len(yelp_reviews), "data points")
+print("=== DATASET ===")
+yelp_reviews_df = data.load_json(DATA_FOLDER / "yelp_review_training_dataset.jsonl")
+print("loaded", len(yelp_reviews_df), "data points")
+yelp_reviews = data.format_reviews(args, tokenizer, yelp_reviews_df)
+print("formatted", len(yelp_reviews_df), "reviews")
 
 # train 75% | validation 15% | test 10%
 train_ratio = 0.75
