@@ -6,9 +6,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional
-from torch.utils import data
-from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets
+
 import matplotlib.pyplot as plt
 import nltk
 import numpy as np
@@ -21,6 +19,8 @@ import torchvision
 import tqdm
 from segtok import tokenizer
 from torch.optim import lr_scheduler
+from torch.utils import data
+from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, models, transforms
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -140,7 +140,6 @@ def format_reviews(args, tokenizer, datatable, indices=None, task_bar=False):
         encoded_reviews_mask.append(mask)
 
         # VADER
-        # if review_sentiment_dict is None:
         sentence_list = nltk.tokenize.sent_tokenize(review_text)
         review_sentiment_sentence = []
 
@@ -149,9 +148,6 @@ def format_reviews(args, tokenizer, datatable, indices=None, task_bar=False):
             review_sentiment_sentence.append(vs["compound"])
         padded, _ = pad_sequence(review_sentiment_sentence, 0, args.max_len_vader)
         review_sentiment.append(padded)
-        # else:
-        #     if review["review_id"] in review_sentiment_dict:
-        #         review_sentiment.append(review_sentiment_dict[review["review_id"]])
 
     torch_encoded_reviews, torch_encoded_reviews_target = batch_to_torch_long(
         encoded_reviews, reviews_to_process["stars"].values
