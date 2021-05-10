@@ -10,6 +10,8 @@ import data
 import models
 from models import LanguageModel
 
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 MAX_LEN = 128
 MAX_LEN_VADER = 40
 BATCH_SIZE = 32
@@ -17,21 +19,22 @@ EPOCHS = 5
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_params = torch.load(
-    "models/training_checkpoint_oscar_vaderless.pt", map_location=device
+    "models/training_checkpoint_oscar_vader.pt", map_location=device
 )
 
 model = models.LanguageModel(
     vocab_size=MAX_LEN,
     rnn_size=256,
     vader_size=MAX_LEN_VADER,
-    use_vader=False,
+    use_vader=True,
     use_bert=False,
-    use_cnn=False,
+    use_cnn=True,
 )
 model.load_state_dict(model_params["model_state_dict"])
 model = model.to(device)
 model.eval()
 
+analyzer = SentimentIntensityAnalyzer()
 
 def predict_stars(text):
     """
@@ -39,7 +42,7 @@ def predict_stars(text):
     """
     # This is where you call your model to get the number of stars output
     encodings = model.tokenizer.encode_plus(
-        [text],
+        text,
         add_special_tokens=True,
         max_length=MAX_LEN,
         return_token_type_ids=False,
@@ -47,15 +50,25 @@ def predict_stars(text):
         truncation=True,
         pad_to_max_length=False,
     )
-    vectorized = encodings.get("input_ids", [])
+    text_encoding = encodings.get("input_ids", [])
+    vectorized, _ = data.pad_sequence(text_encoding, 0, MAX_LEN)
 
-    vadar_sentiments = nltk.tokenize.sent_tokenize(text)
+    sentence_list = nltk.tokenize.sent_tokenize(
+        text
+    )  # Text is one at a time anyway here
+    review_sentiment_sentence = []
+    for sentence in sentence_list:
+        vs = analyzer.polarity_scores(sentence)
+        review_sentiment_sentence.append(vs["compound"])
+    vadar_sentiments, _ = data.pad_sequence(review_sentiment_sentence, 0, MAX_LEN_VADER)
 
     # Place the data as a batch, even if there is only 1
-    vectorized = [vectorized]
-    vadar_sentiments = [vadar_sentiments]
+    vectorized = data.batch_to_torch_long([vectorized])
+    vadar_sentiments = data.batch_to_torch_float([vadar_sentiments])
 
-    return model.predict(vectorized, vadar_sentiments)
+    p = model.predict(vectorized, vadar_sentiments)
+    print(p, p[0], p[0].item())
+    return float(p[0].item())
 
 
 if len(sys.argv) > 1:

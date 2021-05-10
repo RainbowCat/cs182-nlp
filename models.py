@@ -25,9 +25,6 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import data
 from utils import *
 
-yelp_reviews = data.load_json("starter/yelp_review_training_dataset.jsonl")
-
-
 class LanguageModel(nn.Module):
     def __init__(
         self,
@@ -44,21 +41,21 @@ class LanguageModel(nn.Module):
 
         # Create an embedding layer, with 768 hidden layers
         if use_bert:
-            self.base_model = BertForSequenceClassification.from_pretrained(
+            self.xlnet = BertForSequenceClassification.from_pretrained(
                 "bert-base-cased", num_labels=200
             )
-            self.base_model.classifier.add_module("bert_activation", nn.Tanh())
-            self.base_model.classifier.add_module("prediction", nn.Linear(200, 5))
+            self.xlnet.classifier.add_module("bert_activation", nn.Tanh())
+            self.xlnet.classifier.add_module("prediction", nn.Linear(200, 5))
             self.tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
         else:
-            self.base_model = torch.hub.load(
+            self.xlnet = torch.hub.load(
                 "huggingface/pytorch-transformers", "model", "xlnet-base-cased"
             )
             self.tokenizer = torch.hub.load(
                 "huggingface/pytorch-transformers", "tokenizer", "xlnet-base-cased"
             )
 
-        for param in self.base_model.layer.parameters():
+        for param in self.xlnet.layer.parameters():
             param.requires_grad = False
         # Output: (vocab_size x 768), where 768 hidden layers of base_model
 
@@ -83,7 +80,7 @@ class LanguageModel(nn.Module):
         max_pool_2d_out_length = conv2d_out_Wout // 1
 
         self.lstm = None
-        self.sentiments = {}
+        # self.sentiments = {}
         if use_vader:
             self.lstm = nn.LSTM(
                 input_size=1,
@@ -92,26 +89,26 @@ class LanguageModel(nn.Module):
                 batch_first=True,
                 dropout=dropout,
             )
-            # FIXME: Create dictionary of all the reviews' Vader temporarily
-            review_iterator = tqdm.tqdm(
-                yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
-            )
+            #     # FIXME: Create dictionary of all the reviews' Vader temporarily
+            #     review_iterator = tqdm.tqdm(
+            #         yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
+            #     )
 
-            for i, review in review_iterator:
-                # Tokenize by TOKENIZER
-                review_text = review["text"]
-                # VADER
-                sentence_list = nltk.tokenize.sent_tokenize(review_text)
-                review_sentiment_sentence = []
-                analyzer = SentimentIntensityAnalyzer()
-                for sentence in sentence_list:
-                    vs = analyzer.polarity_scores(sentence)
-                    review_sentiment_sentence.append(vs["compound"])
-                # TODO should last arg be self.vader_size?
-                padded, _ = data.pad_sequence(review_sentiment_sentence, 0, vocab_size)
-                self.sentiments[review["review_id"]] = padded
-                if len(self.sentiments) < 20:
-                    print(len(self.sentiments), self.sentiments[review["review_id"]])
+            #     for i, review in review_iterator:
+            #         # Tokenize by TOKENIZER
+            #         review_text = review["text"]
+            #         # VADER
+            #         sentence_list = nltk.tokenize.sent_tokenize(review_text)
+            #         review_sentiment_sentence = []
+            #         analyzer = SentimentIntensityAnalyzer()
+            #         for sentence in sentence_list:
+            #             vs = analyzer.polarity_scores(sentence)
+            #             review_sentiment_sentence.append(vs["compound"])
+            #         # TODO should last arg be self.vader_size?
+            #         padded, _ = data.pad_sequence(review_sentiment_sentence, 0, vocab_size)
+            #         self.sentiments[review["review_id"]] = padded
+            #         if len(self.sentiments) < 20:
+            #             print(len(self.sentiments), self.sentiments[review["review_id"]])
         else:
             vader_size = 0
 
@@ -125,11 +122,11 @@ class LanguageModel(nn.Module):
             nn.ReLU(),
         )
         self.output = nn.Linear(
-            hidden_layer_dense, 5
+            hidden_layer_dense, 6
         )  # classify yelp_reviews into 5 ratings
 
     def forward(self, vectorized_words, vader):
-        out = self.base_model(vectorized_words)
+        out = self.xlnet(vectorized_words)
         out_hidden = out.last_hidden_state
         batches_len, word_len, embedding_len = out_hidden.shape
         out_hidden = out_hidden.reshape(batches_len, 1, word_len, embedding_len)
@@ -157,13 +154,14 @@ class LanguageModel(nn.Module):
 
     def predict(self, vectorized_words, vadar_sentiments):
         logits = self.forward(vectorized_words, vadar_sentiments)
-        prediction = torch.argmax(axis=1)
+        prediction = logits.argmax(dim=1,keepdim=False)
+        print(prediction)
         return prediction
 
     def loss_fn(self, prediction, target):
         loss_criterion = nn.CrossEntropyLoss(reduction="none")
         # print(prediction.shape,target.shape)
-        return torch.mean(loss_criterion(prediction, target - 1))
+        return torch.mean(loss_criterion(prediction, target))
 
 
 # def save_model():
