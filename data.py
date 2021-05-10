@@ -111,9 +111,7 @@ batch_to_torch = lambda b_in, b_targets, b_mask: (
 # formatting
 
 
-def format_reviews(
-    args, tokenizer, datatable, indices=None, task_bar=False, review_sentiment_dict=None
-):
+def format_reviews(args, tokenizer, datatable, indices=None, task_bar=False):
     encoded_reviews = []
     encoded_reviews_mask = []
     review_sentiment = []
@@ -124,7 +122,7 @@ def format_reviews(
 
     review_iterator = reviews_to_process.iterrows()
     if task_bar:
-        review_iterator = tqdm.notebook.tqdm(
+        review_iterator = tqdm.tqdm(
             reviews_to_process.iterrows(), total=reviews_to_process.shape[0]
         )
 
@@ -136,19 +134,20 @@ def format_reviews(
         padded, mask = pad_sequence(numerized, 0, args.max_len)
         encoded_reviews.append(padded)
         encoded_reviews_mask.append(mask)
-        # VADER
-        if review_sentiment_dict is None:
-            sentence_list = nltk.tokenize.sent_tokenize(review_text)
-            review_sentiment_sentence = []
 
-            for sentence in sentence_list:
-                vs = analyzer.polarity_scores(sentence)
-                review_sentiment_sentence.append(vs["compound"])
-            padded, _ = pad_sequence(review_sentiment_sentence, 0, args.max_len_vader)
-            review_sentiment.append(padded)
-        else:
-            if review["review_id"] in review_sentiment_dict:
-                review_sentiment.append(review_sentiment_dict[review["review_id"]])
+        # VADER
+        # if review_sentiment_dict is None:
+        sentence_list = nltk.tokenize.sent_tokenize(review_text)
+        review_sentiment_sentence = []
+
+        for sentence in sentence_list:
+            vs = analyzer.polarity_scores(sentence)
+            review_sentiment_sentence.append(vs["compound"])
+        padded, _ = pad_sequence(review_sentiment_sentence, 0, args.max_len_vader)
+        review_sentiment.append(padded)
+        # else:
+        #     if review["review_id"] in review_sentiment_dict:
+        #         review_sentiment.append(review_sentiment_dict[review["review_id"]])
 
     torch_encoded_reviews, torch_encoded_reviews_target = batch_to_torch_long(
         encoded_reviews, reviews_to_process["stars"].values

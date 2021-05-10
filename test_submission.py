@@ -5,12 +5,11 @@ import sys
 import nltk
 import torch
 import tqdm
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import data
 import models
 from models import LanguageModel
-
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 MAX_LEN = 128
 MAX_LEN_VADER = 40

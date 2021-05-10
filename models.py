@@ -25,6 +25,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import data
 from utils import *
 
+
 class LanguageModel(nn.Module):
     def __init__(
         self,
@@ -32,30 +33,32 @@ class LanguageModel(nn.Module):
         use_bert,
         use_cnn,
         vocab_size,
-        rnn_size,
         vader_size,
         num_layers=1,
         dropout=0,
     ):
         super().__init__()
+        self.use_vader = use_vader
+        self.use_bert = use_bert
+        self.use_cnn = use_cnn
 
         # Create an embedding layer, with 768 hidden layers
         if use_bert:
-            self.xlnet = BertForSequenceClassification.from_pretrained(
+            self.base_model = BertForSequenceClassification.from_pretrained(
                 "bert-base-cased", num_labels=200
             )
-            self.xlnet.classifier.add_module("bert_activation", nn.Tanh())
-            self.xlnet.classifier.add_module("prediction", nn.Linear(200, 5))
+            self.base_model.classifier.add_module("bert_activation", nn.Tanh())
+            self.base_model.classifier.add_module("prediction", nn.Linear(200, 5))
             self.tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
         else:
-            self.xlnet = torch.hub.load(
+            self.base_model = torch.hub.load(
                 "huggingface/pytorch-transformers", "model", "xlnet-base-cased"
             )
             self.tokenizer = torch.hub.load(
                 "huggingface/pytorch-transformers", "tokenizer", "xlnet-base-cased"
             )
 
-        for param in self.xlnet.layer.parameters():
+        for param in self.base_model.layer.parameters():
             param.requires_grad = False
         # Output: (vocab_size x 768), where 768 hidden layers of base_model
 
@@ -110,7 +113,7 @@ class LanguageModel(nn.Module):
             #         if len(self.sentiments) < 20:
             #             print(len(self.sentiments), self.sentiments[review["review_id"]])
         else:
-            vader_size = 0
+            self.vader_size = 0
 
         self.dropout = nn.Dropout(dropout)
         # print(max_pool_2d_out_length + vader_size)
@@ -125,21 +128,18 @@ class LanguageModel(nn.Module):
             hidden_layer_dense, 6
         )  # classify yelp_reviews into 5 ratings
 
-    def forward(self, vectorized_words, vader):
-        out = self.xlnet(vectorized_words)
+    def forward(self, words, sentiments):
+        out = self.base_model(words)
         out_hidden = out.last_hidden_state
         batches_len, word_len, embedding_len = out_hidden.shape
         out_hidden = out_hidden.reshape(batches_len, 1, word_len, embedding_len)
         conv2d_out = self.conv2D_layer(out_hidden)
         result = self.max_pool_2d(conv2d_out)
-        # print(result.shape)
         input1 = result.squeeze(1).squeeze(1)
 
-        if self.lstm:
-            batch_size, vader_len = vader.shape
-            # print(x.reshape(batch_size, vader_len, 1).shape)
-            output, _ = self.lstm(vader.reshape(batch_size, vader_len, 1))
-            # print(output.shape)
+        if self.use_vader and self.lstm:
+            batch_size, vader_len = sentiments.shape
+            output, _ = self.lstm(sentiments.reshape(batch_size, vader_len, 1))
             input2 = output.squeeze(2)
             combined_input = (input1, input2)
         else:
@@ -154,7 +154,7 @@ class LanguageModel(nn.Module):
 
     def predict(self, vectorized_words, vadar_sentiments):
         logits = self.forward(vectorized_words, vadar_sentiments)
-        prediction = logits.argmax(dim=1,keepdim=False)
+        prediction = logits.argmax(dim=1, keepdim=False)
         print(prediction)
         return prediction
 
@@ -164,11 +164,13 @@ class LanguageModel(nn.Module):
         return torch.mean(loss_criterion(prediction, target))
 
 
-# def save_model():
-#     torch.save({'epoch': EPOCHS,
-#                 't': (DATASET.shape[0] // BATCH_SIZE)+1,
-#                 'model_state_dict': model.state_dict(),
-#                 'optimizer_state_dict': optimizer.state_dict(),
-#                 'losses': losses,
-#                 'accuracies': accuracies
-#                 }, str(TORCH_CHECKPOINT_MODEL))
+def save_model(args, filename, model, losses, accuracies):
+    torch.save(
+        {
+            "args": args,
+            "state_dict": model.state_dict(),
+            "losses": losses,
+            "accuracies": accuracies,
+        },
+        filename,
+    )

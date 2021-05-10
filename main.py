@@ -7,6 +7,7 @@ import copy
 import itertools
 import json
 import os
+import pickle
 import random
 import re
 import shutil
@@ -61,8 +62,26 @@ list_to_device = lambda th_obj: [tensor.to(device) for tensor in th_obj]
 yelp_reviews = data.load_json(DATA_FOLDER / "yelp_review_training_dataset.jsonl")
 print("loaded", len(yelp_reviews), "data points")
 
+# train 75% | validation 15% | test 10%
+train_ratio = 0.75
+validate_ratio = 0.15
+test_ratio = 0.10
+assert train_ratio + validate_ratio + test_ratio == 1.0
+train_reviews, validate_reviews, test_reviews = data.train_validate_test_split(
+    yelp_reviews, train_ratio, validate_ratio
+)
 
-def run_validation(model, use_all=False, mode="val"):
+model = models.LanguageModel(
+    vocab_size=args.max_len,
+    rnn_size=256,
+    vader_size=args.max_len_vader,
+    use_vader=args.use_vader,
+    use_bert=args.use_bert,
+    use_cnn=args.use_cnn,
+)
+
+
+def test_eval(model, use_all=False, mode="val"):
     reviews_dataset = None
     if mode == "val":
         print("Running Validation")
@@ -76,7 +95,7 @@ def run_validation(model, use_all=False, mode="val"):
         assert False, "Invalid mode"
     num_of_review_set = len(reviews_dataset) if use_all else 1000
     indices = np.random.permutation(len(reviews_dataset))
-    t = tqdm.notebook.tqdm(
+    num_batches = tqdm.tqdm(
         range(
             0,
             (num_of_review_set // args.batch_size)
@@ -86,23 +105,21 @@ def run_validation(model, use_all=False, mode="val"):
     loss_val_total = 0
     accuracy_val_total = 0
     temp_count = 0
-    for i in t:
+    for i in num_batches:
         val_start_i = i * args.batch_size
         val_end_i = (i + 1) * args.batch_size
         # print(val_start_i, val_end_i, indices.shape)
-        batch_val = data.format_reviews(
-            args,
-            model.tokenizer,
-            reviews_dataset,
-            indices[val_start_i:val_end_i],
-            review_sentiment_dict=model.sentiments,
-        )
         (
             batch_input_val,
             batch_target_val,
             batch_review_sentiment_val,
             batch_target_mask_val,
-        ) = batch_val
+        ) = data.format_reviews(
+            args,
+            model.tokenizer,
+            reviews_dataset,
+            indices[val_start_i:val_end_i],
+        )
         # print(batch_input_val.shape, batch_review_sentiment_val.shape)
         (batch_input_val, batch_target_val) = list_to_device(
             (batch_input_val, batch_target_val)
@@ -136,24 +153,6 @@ def run_validation(model, use_all=False, mode="val"):
     print(mode, "Evaluation set loss:", loss_val, mode, "Accuracy set %:", accuracy_val)
 
 
-# train 75% | validation 15% | test 10%
-train_ratio = 0.75
-validate_ratio = 0.15
-test_ratio = 0.10
-assert train_ratio + validate_ratio + test_ratio == 1.0
-train_reviews, validate_reviews, test_reviews = data.train_validate_test_split(
-    yelp_reviews, train_ratio, validate_ratio
-)
-
-model = models.LanguageModel(
-    vocab_size=args.max_len,
-    rnn_size=256,
-    vader_size=args.max_len_vader,
-    use_vader=args.use_vader,
-    use_bert=args.use_bert,
-    use_cnn=args.use_cnn,
-)
-
 # start training
 model.train()
 
@@ -179,7 +178,6 @@ for epoch in range(args.epochs):
             model.tokenizer,
             train_reviews,
             indices[i * args.batch_size : (i + 1) * args.batch_size],
-            model.sentiments,
         )
         batch_input, batch_target, batch_review_sentiment, batch_target_mask = batch
         (
@@ -218,7 +216,7 @@ for epoch in range(args.epochs):
                 },
                 OUT_FOLDER / str(time.time()),
             )
-            run_validation(model)
+            test_eval(model)
             print(
                 f"Epoch: {epoch} Iteration: {i} Train Loss: {np.mean(losses[-10:])} Train Accuracy: {np.mean(accuracies[-10:])}"
             )
