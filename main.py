@@ -19,15 +19,8 @@ from functools import lru_cache, reduce
 from itertools import chain, product
 from os import PathLike
 from pathlib import Path
-from typing import (
-    Dict,
-    Iterable,
-    List,
-    Mapping,
-    NamedTuple,
-    Optional,
-    Sequence,
-)
+from typing import (Dict, Iterable, List, Mapping, NamedTuple, Optional,
+                    Sequence)
 
 import huggingface_hub
 import matplotlib.pyplot as plt

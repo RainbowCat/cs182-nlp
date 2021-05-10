@@ -1,5 +1,4 @@
 import copy
-import nltk
 import json
 import os
 import random
@@ -8,6 +7,7 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import nltk
 import numpy as np
 import pandas as pd
 import torch
@@ -22,8 +22,10 @@ from torchvision import datasets, models, transforms
 from transformers import BertForSequenceClassification, BertTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+import data
 from utils import *
 
+yelp_reviews = data.load_json("starter/yelp_review_training_dataset.jsonl")
 
 class LanguageModel(nn.Module):
     def __init__(
@@ -90,7 +92,7 @@ class LanguageModel(nn.Module):
                 dropout=dropout,
             )
             # Create dictionary of all the reviews' Vader temporarily
-            review_iterator = tqdm.notebook.tqdm(
+            review_iterator = tqdm.tqdm(
                 yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
             )
 
@@ -126,13 +128,13 @@ class LanguageModel(nn.Module):
         )  # classify yelp_reviews into 5 ratings
 
     def forward(self, vectorized_words, vader):
-        xlnet_out = self.base_model(vectorized_words)
-        xlnet_out_hidden = xlnet_out.last_hidden_state
-        batches_len, word_len, embedding_len = xlnet_out_hidden.shape
-        xlnet_out_hidden = xlnet_out_hidden.reshape(
+        out = self.base_model(vectorized_words)
+        out_hidden = out.last_hidden_state
+        batches_len, word_len, embedding_len = out_hidden.shape
+        out_hidden = out_hidden.reshape(
             batches_len, 1, word_len, embedding_len
         )
-        conv2d_out = self.conv2D_layer(xlnet_out_hidden)
+        conv2d_out = self.conv2D_layer(out_hidden)
         result = self.max_pool_2d(conv2d_out)
         # print(result.shape)
         input1 = result.squeeze(1).squeeze(1)
@@ -153,6 +155,11 @@ class LanguageModel(nn.Module):
         logits = self.dense(lstm_drop)
         logits = self.output(logits)
         return logits
+    
+    def predict(self, vectorized_words, vadar_sentiments):
+        logits = self.forward(vectorized_words, vadar_sentiments)
+        prediction = torch.argmax(axis=1)
+        return prediction
 
     def loss_fn(self, prediction, target):
         loss_criterion = nn.CrossEntropyLoss(reduction="none")
