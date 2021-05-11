@@ -8,6 +8,10 @@
 *.jsonl
 *.pt
 
+cs182-nlp-oscar.ipynb
+cs182-nlp-master.ipynb
+cs182-nlp-chandana.ipynb
+
 starter
 dataset
 yelp_dataset

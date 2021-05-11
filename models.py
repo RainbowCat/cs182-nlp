@@ -6,10 +6,10 @@ import sys
 import time
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import nltk
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -25,37 +25,30 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import data
 from utils import *
 
-class LanguageModel(nn.Module):
+
+class LanguageModel(pl.LightningModule):
     def __init__(
         self,
-        use_vader,
-        use_bert,
-        use_cnn,
-        vocab_size,
-        rnn_size,
-        vader_size,
-        num_layers=1,
-        dropout=0,
+        args,
+        num_layers: int = 1,
+        dropout: float = 0,
     ):
         super().__init__()
 
-        # Create an embedding layer, with 768 hidden layers
-        if use_bert:
-            self.xlnet = BertForSequenceClassification.from_pretrained(
-                "bert-base-cased", num_labels=200
-            )
-            self.xlnet.classifier.add_module("bert_activation", nn.Tanh())
-            self.xlnet.classifier.add_module("prediction", nn.Linear(200, 5))
-            self.tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
-        else:
-            self.xlnet = torch.hub.load(
-                "huggingface/pytorch-transformers", "model", "xlnet-base-cased"
-            )
-            self.tokenizer = torch.hub.load(
-                "huggingface/pytorch-transformers", "tokenizer", "xlnet-base-cased"
-            )
+        self.use_vader = args.use_vader
+        self.use_bert = args.use_bert
+        self.use_cnn = args.use_cnn
 
-        for param in self.xlnet.layer.parameters():
+        self.model_name = "bert-base-cased" if args.use_bert else "xlnet-base-cased"
+        self.tokenizer = torch.hub.load(
+            "huggingface/pytorch-transformers", "tokenizer", self.model_name
+        )
+
+        self.base_model = torch.hub.load(
+            "huggingface/pytorch-transformers", "model", self.model_name
+        )
+
+        for param in self.base_model.layer.parameters():
             param.requires_grad = False
         # Output: (vocab_size x 768), where 768 hidden layers of base_model
 
@@ -72,7 +65,7 @@ class LanguageModel(nn.Module):
         # Filter of (conv2d_kernel_H, conv2d_kernel_W), Cin = 1, Cout = 1
 
         # Output:
-        conv2d_out_Hout = vocab_size - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
+        conv2d_out_Hout = args.max_len - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
         conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
 
         self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
@@ -80,8 +73,10 @@ class LanguageModel(nn.Module):
         max_pool_2d_out_length = conv2d_out_Wout // 1
 
         self.lstm = None
+        self.vader_size = 0
         # self.sentiments = {}
-        if use_vader:
+        if self.use_vader:
+            self.vader_size = args.max_len_vader
             self.lstm = nn.LSTM(
                 input_size=1,
                 hidden_size=1,
@@ -89,57 +84,57 @@ class LanguageModel(nn.Module):
                 batch_first=True,
                 dropout=dropout,
             )
-            #     # FIXME: Create dictionary of all the reviews' Vader temporarily
-            #     review_iterator = tqdm.tqdm(
-            #         yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
-            #     )
-
-            #     for i, review in review_iterator:
-            #         # Tokenize by TOKENIZER
-            #         review_text = review["text"]
-            #         # VADER
-            #         sentence_list = nltk.tokenize.sent_tokenize(review_text)
-            #         review_sentiment_sentence = []
-            #         analyzer = SentimentIntensityAnalyzer()
-            #         for sentence in sentence_list:
-            #             vs = analyzer.polarity_scores(sentence)
-            #             review_sentiment_sentence.append(vs["compound"])
-            #         # TODO should last arg be self.vader_size?
-            #         padded, _ = data.pad_sequence(review_sentiment_sentence, 0, vocab_size)
-            #         self.sentiments[review["review_id"]] = padded
-            #         if len(self.sentiments) < 20:
-            #             print(len(self.sentiments), self.sentiments[review["review_id"]])
-        else:
-            vader_size = 0
 
         self.dropout = nn.Dropout(dropout)
-        # print(max_pool_2d_out_length + vader_size)
+        # print(max_pool_2d_out_length + self.vader_size)
 
         hidden_layer_dense = 100
 
         self.dense = nn.Sequential(
-            nn.Linear(max_pool_2d_out_length + vader_size, hidden_layer_dense),
+            nn.Linear(max_pool_2d_out_length + self.vader_size, hidden_layer_dense),
             nn.ReLU(),
         )
+        print(max_pool_2d_out_height + self.vader_size, hidden_layer_dense)
         self.output = nn.Linear(
-            hidden_layer_dense, 6
+            hidden_layer_dense, 5
         )  # classify yelp_reviews into 5 ratings
 
-    def forward(self, vectorized_words, vader):
-        out = self.xlnet(vectorized_words)
+    def training_step(self, batch, batch_idx):
+        (
+            batch_input,
+            batch_target,
+            batch_review_sentiments,
+            batch_target_mask,
+        ) = batch
+        (
+            batch_input,
+            batch_target,
+            batch_target_mask,
+            batch_review_sentiments,
+        ) = list_to_device(
+            (batch_input, batch_target, batch_target_mask, batch_review_sentiments)
+        )
+        prediction = self.forward(batch_input, batch_review_sentiments)
+        loss = self.loss_fn(prediction, batch_target)
+        self.log("train_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+
+    def forward(self, words, sentiments):
+        out = self.base_model(words)
         out_hidden = out.last_hidden_state
         batches_len, word_len, embedding_len = out_hidden.shape
         out_hidden = out_hidden.reshape(batches_len, 1, word_len, embedding_len)
         conv2d_out = self.conv2D_layer(out_hidden)
         result = self.max_pool_2d(conv2d_out)
-        # print(result.shape)
         input1 = result.squeeze(1).squeeze(1)
 
-        if self.lstm:
-            batch_size, vader_len = vader.shape
-            # print(x.reshape(batch_size, vader_len, 1).shape)
-            output, _ = self.lstm(vader.reshape(batch_size, vader_len, 1))
-            # print(output.shape)
+        if self.use_vader and self.lstm:
+            batch_size, vader_len = sentiments.shape
+            output, _ = self.lstm(sentiments.reshape(batch_size, vader_len, 1))
             input2 = output.squeeze(2)
             combined_input = (input1, input2)
         else:
@@ -148,13 +143,33 @@ class LanguageModel(nn.Module):
         combined_input = torch.cat(combined_input, dim=1)
 
         lstm_drop = self.dropout(combined_input)
-        logits = self.dense(lstm_drop)
+        print("dropped")
+
+        conv2d_c_in = 1
+        conv2d_c_out = 1
+        conv2d_kernel_W = 5  # along Embedding Length
+        conv2d_kernel_H = 5  # along Word Length
+        conv2d_out_Hout = (
+            args.max_len - ((conv2d_kernel_H - 1) // 2) * 2
+        )  # Vocab Size
+        conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
+
+        self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
+        max_pool_2d_out_height = conv2d_out_Hout // conv2d_out_Hout
+        max_pool_2d_out_length = conv2d_out_Wout // 1
+
+        logits = nn.Linear(max_pool_2d_out_length + args.max_len_vader, 100)(lstm_drop)
+        print("hi")
+        logits = nn.ReLU()(logits)
+        # logits = self.dense(lstm_drop)
+        # print("logits")
         logits = self.output(logits)
+        print("logits 2", logits.shape)
         return logits
 
     def predict(self, vectorized_words, vadar_sentiments):
         logits = self.forward(vectorized_words, vadar_sentiments)
-        prediction = logits.argmax(dim=1,keepdim=False)
+        prediction = logits.argmax(dim=1, keepdim=False)
         print(prediction)
         return prediction
 
@@ -164,11 +179,13 @@ class LanguageModel(nn.Module):
         return torch.mean(loss_criterion(prediction, target))
 
 
-# def save_model():
-#     torch.save({'epoch': EPOCHS,
-#                 't': (DATASET.shape[0] // BATCH_SIZE)+1,
-#                 'model_state_dict': model.state_dict(),
-#                 'optimizer_state_dict': optimizer.state_dict(),
-#                 'losses': losses,
-#                 'accuracies': accuracies
-#                 }, str(TORCH_CHECKPOINT_MODEL))
+def save_model(args, filename, model, losses, accuracies):
+    torch.save(
+        {
+            "args": args,
+            "state_dict": model.state_dict(),
+            "losses": losses,
+            "accuracies": accuracies,
+        },
+        filename,
+    )
