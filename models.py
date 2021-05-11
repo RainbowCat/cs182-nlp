@@ -155,7 +155,7 @@ class LanguageModel(nn.Module):
     def predict(self, vectorized_words, vadar_sentiments):
         logits = self.forward(vectorized_words, vadar_sentiments)
         prediction = logits.argmax(dim=1,keepdim=False)
-        print(prediction)
+        # print(prediction)
         return prediction
 
     def loss_fn(self, prediction, target):
