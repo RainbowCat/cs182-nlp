@@ -5,12 +5,11 @@ import sys
 import nltk
 import torch
 import tqdm
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import data
 import models
 from models import LanguageModel
-
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 MAX_LEN = 128
 MAX_LEN_VADER = 40
@@ -35,6 +34,7 @@ model = model.to(device)
 model.eval()
 
 analyzer = SentimentIntensityAnalyzer()
+
 
 def predict_stars(text):
     """
@@ -63,8 +63,8 @@ def predict_stars(text):
     vadar_sentiments, _ = data.pad_sequence(review_sentiment_sentence, 0, MAX_LEN_VADER)
 
     # Place the data as a batch, even if there is only 1
-    vectorized = data.batch_to_torch_long([vectorized])
-    vadar_sentiments = data.batch_to_torch_float([vadar_sentiments])
+    vectorized = data.to_torch_long([vectorized])
+    vadar_sentiments = data.to_torch_float([vadar_sentiments])
 
     p = model.predict(vectorized, vadar_sentiments)
     print(p, p[0], p[0].item())
