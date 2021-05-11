@@ -80,19 +80,8 @@ def tokenize_review(args, review):
     return encodings["input_ids"]
 
 
-# padding
-def pad_sequence(numerized, pad_index, to_length, beginning=False):
-    pad = numerized[:to_length]
-    if beginning:
-        padded = [pad_index] * (to_length - len(pad)) + pad
-    else:
-        padded = pad + [pad_index] * (to_length - len(pad))
-    mask = [w != pad_index for w in padded]
-    return padded, mask
-
-
 # formatting
-def format_reviews(args, tokenizer, datatable: pd.DataFrame):
+def format_reviews(args, datatable: pd.DataFrame):
     encoded_reviews = []
     encoded_reviews_mask = []
     review_sentiments = []
@@ -101,7 +90,7 @@ def format_reviews(args, tokenizer, datatable: pd.DataFrame):
     analyzer = SentimentIntensityAnalyzer()
     for i, review in reviews_to_process.iterrows():
         review_text = review["text"]
-        numerized = tokenize_review(args, tokenizer, review_text)
+        numerized = tokenize_review(args, review_text)
         padded, mask = pad_sequence(numerized, 0, args.max_len)
         encoded_reviews.append(padded)
         encoded_reviews_mask.append(mask)
@@ -124,18 +113,17 @@ def format_reviews(args, tokenizer, datatable: pd.DataFrame):
 
 # split up dataset
 # https://stackoverflow.com/questions/38250710/how-to-split-data-into-3-sets-train-validation-and-test
-def train_validate_test_split(df, train_percent=0.6, validate_percent=0.2, seed=0):
+def train_validate_test_split(dataset, train_percent=0.6, validate_percent=0.2, seed=0):
     np.random.seed(seed)
-    perm = np.random.permutation(df.index)
-    # m = df.size
-    m = len(df.index)
+    N = len(dataset)
+    perm = np.random.permutation(N)
 
-    train_end = int(train_percent * m)
-    validate_end = int(validate_percent * m) + train_end
+    train_end = int(train_percent * N)
+    validate_end = int(validate_percent * N) + train_end
 
-    train = df.iloc[perm[:train_end]]
-    validate = df.iloc[perm[train_end:validate_end]]
-    test = df.iloc[perm[validate_end:]]
+    train = dataset[perm[:train_end]]
+    validate = dataset[perm[train_end:validate_end]]
+    test = dataset[perm[validate_end:]]
 
     return train, validate, test
 
@@ -166,7 +154,7 @@ class YelpDataModule(pl.LightningDataModule):
         self.batch_size = args.batch_size
 
     def setup(self, tokenizer, stage: Optional[str] = None):
-        train_set, val_set, test_set = train_validate_test_split(self.dataset)
+        self.train_set, self.val_set, self.test_set = train_validate_test_split(self.dataset)
 
     def train_dataloader(self):
         return DataLoader(self.train_set, batch_size=self.batch_size)
