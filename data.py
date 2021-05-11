@@ -56,24 +56,6 @@ def load_json(
         return None
 
 
-def tokenize_review(args, review_text):
-    tokenizer = torch.hub.load(
-        "huggingface/pytorch-transformers",
-        "tokenizer",
-        "bert-base-cased" if args.use_bert else "xlnet-base-cased",
-    )
-    encodings = tokenizer(
-        review_text,
-        add_special_tokens=True,
-        max_length=args.max_len,
-        return_token_type_ids=False,
-        return_attention_mask=False,
-        truncation=True,
-        pad_to_max_length=True,
-    )
-    return encodings["input_ids"]
-
-
 def pad_sequence(numerized, pad_index, to_length, beginning=False):
     pad = numerized[:to_length]
     if beginning:
@@ -86,26 +68,42 @@ def pad_sequence(numerized, pad_index, to_length, beginning=False):
 
 # formatting
 def format_reviews(args, datatable: pd.DataFrame):
+    tokenizer = torch.hub.load(
+        "huggingface/pytorch-transformers",
+        "tokenizer",
+        "bert-base-cased" if args.use_bert else "xlnet-base-cased",
+    )
     encoded_reviews = []
     encoded_reviews_mask = []
     review_sentiments = []
     reviews_to_process = datatable[["review_id", "text", "stars"]]
 
     analyzer = SentimentIntensityAnalyzer()
-    for _, review in tqdm.tqdm(reviews_to_process.iterrows()):
+
+    for _, review in tqdm(reviews_to_process.iterrows()):
         review_text = review["text"]
-        numerized = tokenize_review(args, review_text)
-        padded, mask = pad_sequence(numerized, 0, args.max_len)
+
+        encodings = tokenizer(
+            review["text"],
+            add_special_tokens=True,
+            max_length=args.max_len,
+            return_token_type_ids=False,
+            return_attention_mask=True,
+            truncation=True,
+            pad_to_max_length=True,
+        )
+
+        padded, mask = encodings["input_ids"], encodings["attention_mask"]
         encoded_reviews.append(padded)
         encoded_reviews_mask.append(mask)
 
-        # # VADER
-        # sentiments = [
-        #     analyzer.polarity_scores(s)["compound"]
-        #     for s in nltk.tokenize.sent_tokenize(review_text)
-        # ]
-        # padded, _ = pad_sequence(sentiments, 0, args.max_len_vader)
-        # review_sentiments.append(padded)
+        # VADER
+        sentiments = [
+            analyzer.polarity_scores(s)["compound"]
+            for s in nltk.tokenize.sent_tokenize(review_text)
+        ]
+        padded, _ = pad_sequence(sentiments, 0, args.max_len_vader)
+        review_sentiments.append(padded)
 
     return (
         torch.LongTensor(encoded_reviews),  # text
@@ -160,7 +158,7 @@ class YelpDataModule(pl.LightningDataModule):
         self.dataset = YelpDataset(args, data_path)
         self.batch_size = args.batch_size
 
-    def setup(self, tokenizer, stage: Optional[str] = None):
+    def setup(self, stage: Optional[str] = None):
         self.train_set, self.val_set, self.test_set = train_validate_test_split(
             self.dataset
         )
