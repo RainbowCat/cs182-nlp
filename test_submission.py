@@ -1,15 +1,12 @@
 import json
-import pickle
 import sys
 
 import nltk
 import torch
-import tqdm
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import data
 import models
-from models import LanguageModel
 
 MAX_LEN = 128
 MAX_LEN_VADER = 40
@@ -20,6 +17,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_params = torch.load(
     "models/training_checkpoint_oscar_vader.pt", map_location=device
 )
+
+def pad_sequence(numerized, pad_index, to_length, beginning=False):
+    pad = numerized[:to_length]
+    if beginning:
+        padded = [pad_index] * (to_length - len(pad)) + pad
+    else:
+        padded = pad + [pad_index] * (to_length - len(pad))
+    mask = [w != pad_index for w in padded]
+    return padded, mask
 
 model = models.LanguageModel(
     vocab_size=MAX_LEN,
@@ -60,13 +66,13 @@ def predict_stars(text):
     for sentence in sentence_list:
         vs = analyzer.polarity_scores(sentence)
         review_sentiment_sentence.append(vs["compound"])
-    vadar_sentiments, _ = data.pad_sequence(review_sentiment_sentence, 0, MAX_LEN_VADER)
+    vader_sentiments, _ = data.pad_sequence(review_sentiment_sentence, 0, MAX_LEN_VADER)
 
     # Place the data as a batch, even if there is only 1
     vectorized = data.to_torch_long([vectorized])
-    vadar_sentiments = data.to_torch_float([vadar_sentiments])
+    vader_sentiments = data.to_torch_float([vader_sentiments])
 
-    p = model.predict(vectorized, vadar_sentiments)
+    p = model.predict(vectorized, vader_sentiments)
     print(p, p[0], p[0].item())
     return float(p[0].item())
 
