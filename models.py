@@ -6,7 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import nltk
 import numpy as np
 import pandas as pd
@@ -30,35 +29,24 @@ from utils import *
 class LanguageModel(pl.LightningModule):
     def __init__(
         self,
-        use_vader,
-        use_bert,
-        use_cnn,
-        vocab_size,
-        vader_size,
-        num_layers=1,
-        dropout=0,
+        args,
+        num_layers: int = 1,
+        dropout: float = 0,
     ):
         super().__init__()
-        self.use_vader = use_vader
-        self.use_bert = use_bert
-        self.use_cnn = use_cnn
-        self.vocab_size = vocab_size
 
-        # Create an embedding layer, with 768 hidden layers
-        if use_bert:
-            self.base_model = BertForSequenceClassification.from_pretrained(
-                "bert-base-cased", num_labels=200
-            )
-            self.base_model.classifier.add_module("bert_activation", nn.Tanh())
-            self.base_model.classifier.add_module("prediction", nn.Linear(200, 5))
-            self.tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
-        else:
-            self.base_model = torch.hub.load(
-                "huggingface/pytorch-transformers", "model", "xlnet-base-cased"
-            )
-            self.tokenizer = torch.hub.load(
-                "huggingface/pytorch-transformers", "tokenizer", "xlnet-base-cased"
-            )
+        self.use_vader = args.use_vader
+        self.use_bert = args.use_bert
+        self.use_cnn = args.use_cnn
+
+        self.model_name = "bert-base-cased" if args.use_bert else "xlnet-base-cased"
+        self.tokenizer = torch.hub.load(
+            "huggingface/pytorch-transformers", "tokenizer", self.model_name
+        )
+
+        self.base_model = torch.hub.load(
+            "huggingface/pytorch-transformers", "model", self.model_name
+        )
 
         for param in self.base_model.layer.parameters():
             param.requires_grad = False
@@ -77,7 +65,7 @@ class LanguageModel(pl.LightningModule):
         # Filter of (conv2d_kernel_H, conv2d_kernel_W), Cin = 1, Cout = 1
 
         # Output:
-        conv2d_out_Hout = vocab_size - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
+        conv2d_out_Hout = args.max_len - ((conv2d_kernel_H - 1) // 2) * 2  # Vocab Size
         conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
 
         self.max_pool_2d = nn.MaxPool2d((conv2d_out_Hout, 1))
@@ -87,8 +75,8 @@ class LanguageModel(pl.LightningModule):
         self.lstm = None
         self.vader_size = 0
         # self.sentiments = {}
-        if use_vader:
-            self.vader_size = vader_size
+        if self.use_vader:
+            self.vader_size = args.max_len_vader
             self.lstm = nn.LSTM(
                 input_size=1,
                 hidden_size=1,
@@ -96,37 +84,17 @@ class LanguageModel(pl.LightningModule):
                 batch_first=True,
                 dropout=dropout,
             )
-            #     # FIXME: Create dictionary of all the reviews' Vader temporarily
-            #     review_iterator = tqdm.tqdm(
-            #         yelp_reviews.iterrows(), total=yelp_reviews.shape[0]
-            #     )
-
-            #     for i, review in review_iterator:
-            #         # Tokenize by TOKENIZER
-            #         review_text = review["text"]
-            #         # VADER
-            #         sentence_list = nltk.tokenize.sent_tokenize(review_text)
-            #         review_sentiment_sentence = []
-            #         analyzer = SentimentIntensityAnalyzer()
-            #         for sentence in sentence_list:
-            #             vs = analyzer.polarity_scores(sentence)
-            #             review_sentiment_sentence.append(vs["compound"])
-            #         # TODO should last arg be self.vader_size?
-            #         padded, _ = data.pad_sequence(review_sentiment_sentence, 0, vocab_size)
-            #         self.sentiments[review["review_id"]] = padded
-            #         if len(self.sentiments) < 20:
-            #             print(len(self.sentiments), self.sentiments[review["review_id"]])
 
         self.dropout = nn.Dropout(dropout)
-        # print(max_pool_2d_out_length + vader_size)
+        # print(max_pool_2d_out_length + self.vader_size)
 
         hidden_layer_dense = 100
 
         self.dense = nn.Sequential(
-            nn.Linear(max_pool_2d_out_length + vader_size, hidden_layer_dense),
+            nn.Linear(max_pool_2d_out_length + self.vader_size, hidden_layer_dense),
             nn.ReLU(),
         )
-        print(max_pool_2d_out_height + vader_size, hidden_layer_dense)
+        print(max_pool_2d_out_height + self.vader_size, hidden_layer_dense)
         self.output = nn.Linear(
             hidden_layer_dense, 5
         )  # classify yelp_reviews into 5 ratings
@@ -182,7 +150,7 @@ class LanguageModel(pl.LightningModule):
         conv2d_kernel_W = 5  # along Embedding Length
         conv2d_kernel_H = 5  # along Word Length
         conv2d_out_Hout = (
-            self.vocab_size - ((conv2d_kernel_H - 1) // 2) * 2
+            args.max_len - ((conv2d_kernel_H - 1) // 2) * 2
         )  # Vocab Size
         conv2d_out_Wout = 768 - ((conv2d_kernel_W - 1) // 2) * 2  # length
 
@@ -190,7 +158,7 @@ class LanguageModel(pl.LightningModule):
         max_pool_2d_out_height = conv2d_out_Hout // conv2d_out_Hout
         max_pool_2d_out_length = conv2d_out_Wout // 1
 
-        logits = nn.Linear(max_pool_2d_out_length + self.vader_size, 100)(lstm_drop)
+        logits = nn.Linear(max_pool_2d_out_length + args.max_len_vader, 100)(lstm_drop)
         print("hi")
         logits = nn.ReLU()(logits)
         # logits = self.dense(lstm_drop)

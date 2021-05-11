@@ -24,7 +24,6 @@ from typing import (Dict, Iterable, List, Mapping, NamedTuple, Optional,
                     Sequence)
 
 import huggingface_hub
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
