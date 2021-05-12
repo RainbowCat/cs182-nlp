@@ -23,6 +23,8 @@ sentencepiece = "*"
 ipykernel = "*"
 ipywidgets = "*"
 pytorch-lightning = "*"
+jupyter = "*"
+pudb = "*"
 
 [dev-packages]
 
