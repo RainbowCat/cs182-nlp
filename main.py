@@ -40,16 +40,10 @@ def main(
         # track_grad_norm=2,
         weights_summary="full",
         progress_bar_refresh_rate=1,
-        check_val_every_n_epoch=1,
-        callbacks=[
-            ModelCheckpoint(
-                monitor="val_loss",
-                every_n_train_steps=1_000,
-                save_last=True,
-            )
-        ],
+        check_val_every_n_epoch=2,
     )
     trainer.fit(model, datamodule=datamodule)
+    trainer.save_checkpoint(f"bert={use_bert}+cnn={use_cnn}+vader={use_vader}.ckpt")
     trainer.validate(model, datamodule=datamodule)
 
 
