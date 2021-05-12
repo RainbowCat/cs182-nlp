@@ -1,3 +1,4 @@
+import argparse
 import itertools
 from argparse import Namespace
 
@@ -13,10 +14,11 @@ def main(
     use_bert: bool,
     use_vader: bool,
     use_cnn: bool,
-    batch_size: int = 3000,
+    batch_size: int = 256,
     epochs: int = 10,
     max_len: int = 128,
     max_len_vader: int = 128,
+    gpus=0,
 ) -> None:
     args = Namespace(
         batch_size=batch_size,
@@ -31,24 +33,38 @@ def main(
     model = models.LanguageModel(args)
     datamodule = data.YelpDataModule(args)
     trainer = pl.Trainer(
-        gpus=torch.cuda.device_count(),
+        auto_select_gpus=True,
+        gpus=[gpus],
         max_epochs=args.epochs,
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
         progress_bar_refresh_rate=1,
         check_val_every_n_epoch=1,
-        callbacks=[ModelCheckpoint(monitor="val_loss", every_n_train_steps=1_000)],
+        callbacks=[
+            ModelCheckpoint(
+                monitor="val_loss",
+                every_n_train_steps=1_000,
+                save_last=True,
+            )
+        ],
     )
     trainer.fit(model, datamodule=datamodule)
     trainer.validate(model, datamodule=datamodule)
 
 
 if __name__ == "__main__":
-    for use_cnn, use_bert, use_vader in itertools.product(
-        [False, True],
-        [False, True],
-        [False, True],
-    ):
-        print(f"{use_bert, use_vader, use_cnn = }")
-        main(use_bert, use_vader, use_cnn)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--use-bert", type=bool)
+    parser.add_argument("--use-vader", type=bool)
+    parser.add_argument("--use-cnn", type=bool)
+    parser.add_argument("--gpu-id", type=int)
+    args = parser.parse_args()
+
+    main(
+        use_bert=args.use_bert,
+        use_vader=args.use_vader,
+        use_cnn=args.use_cnn,
+        epochs=2,
+        batch_size=1_024,
+    )

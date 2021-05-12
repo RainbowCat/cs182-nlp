@@ -1,4 +1,3 @@
-import concurrent
 import os
 import pickle
 import sys
@@ -18,7 +17,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 nltk.download("punkt")
 
-os.environ["TOKENIZERS_PARALLELISM"] = True
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 
 def pad_sequence(numerized, pad_index, to_length, beginning=False):
@@ -37,7 +36,6 @@ def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
         "bert-base-cased" if args.use_bert else "xlnet-base-cased",
     )
 
-    now = time.time()
     encoding = tokenizer(
         df.text.to_list(),
         add_special_tokens=True,
@@ -49,24 +47,22 @@ def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
         return_tensors="pt",
     )
 
-    print(f"Tokenization took {time.time()-now} seconds")
 
     analyzer = SentimentIntensityAnalyzer()
 
-    def mk_seq(text):
-        return pad_sequence(
-            [
-                analyzer.polarity_scores(s)["compound"]
-                for s in nltk.tokenize.sent_tokenize(text)
-            ],
-            pad_index=0,
-            to_length=args.max_len_vader,
-        )
-
-    now = time.time()
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        sentiment = torch.tensor(list(executor.map(mk_seq, df.text)))
-    print(time.time() - now)
+    sentiment = torch.tensor(
+        [
+            pad_sequence(
+                [
+                    analyzer.polarity_scores(s)["compound"]
+                    for s in nltk.tokenize.sent_tokenize(text)
+                ],
+                pad_index=0,
+                to_length=args.max_len_vader,
+            )
+            for text in tqdm(df.text)
+        ]
+    )
 
     # We subtract 1 to get valid range [0, N).
     target = torch.tensor(df.stars - 1) if stage != "test" else None
@@ -112,20 +108,7 @@ class YelpDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None):
 
-        if stage == "test":
-            self.dataset = YelpDataset(self.args, self.data_path)
-        else:
-            PRECOMPUTED_DATA = Path(
-                "bert-tokens.pkl" if self.args.use_bert else "xlnet-tokens.pkl"
-            )
-
-            try:
-                with open(PRECOMPUTED_DATA, "rb") as f:
-                    self.dataset = pickle.load(f)
-            except FileNotFoundError:
-                self.dataset = YelpDataset(self.args, self.data_path)
-                with open(PRECOMPUTED_DATA, "wb") as f:
-                    pickle.dump(self.dataset, f)
+        self.dataset = YelpDataset(self.args, self.data_path)
 
         N = len(self.dataset)
         num_train = int(0.9 * N) if stage != "test" else 0
