@@ -25,7 +25,6 @@ ipywidgets = "*"
 pytorch-lightning = "*"
 jupyter = "*"
 pudb = "*"
-einops = "*"
 
 [dev-packages]
 

@@ -79,11 +79,7 @@ class YelpDataset(Dataset):
         super().__init__()
         self.data_path = data_path
 
-        yelp_reviews_df = pd.read_json(
-            self.data_path, orient="records", lines=True
-        ).iloc[
-            :9
-        ]  # TODO add back
+        yelp_reviews_df = pd.read_json(self.data_path, orient="records", lines=True)
         self.len = len(yelp_reviews_df)
         self.yelp_reviews = encode_reviews(args, yelp_reviews_df)
 
@@ -139,9 +135,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=True,
             pin_memory=True,
-            # num_workers=os.cpu_count(),
-            num_workers=1,
-            # collate_fn=collate,
+            num_workers=os.cpu_count() // 2,
         )
 
     def val_dataloader(self):
@@ -150,9 +144,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            # num_workers=os.cpu_count(),
-            num_workers=1,
-            # collate_fn=collate,
+            num_workers=os.cpu_count() // 4,
         )
 
     def test_dataloader(self):
@@ -161,7 +153,5 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            # num_workers=os.cpu_count(),
-            num_workers=1,
-            # collate_fn=collate,
+            num_workers=os.cpu_count() // 4,
         )
