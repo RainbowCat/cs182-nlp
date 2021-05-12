@@ -18,14 +18,6 @@ model_params = torch.load(
     "models/training_checkpoint_oscar_vader.pt", map_location=device
 )
 
-def pad_sequence(numerized, pad_index, to_length, beginning=False):
-    pad = numerized[:to_length]
-    if beginning:
-        padded = [pad_index] * (to_length - len(pad)) + pad
-    else:
-        padded = pad + [pad_index] * (to_length - len(pad))
-    mask = [w != pad_index for w in padded]
-    return padded, mask
 
 model = models.LanguageModel(
     vocab_size=MAX_LEN,

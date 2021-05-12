@@ -1,6 +1,8 @@
 import json
 import os
 import pickle
+import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -17,6 +19,16 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 nltk.download("punkt")
 
 
+def pad_sequence(numerized, pad_index, to_length, beginning=False):
+    pad = numerized[:to_length]
+    if beginning:
+        padded = [pad_index] * (to_length - len(pad)) + pad
+    else:
+        padded = pad + [pad_index] * (to_length - len(pad))
+    # mask = [w != pad_index for w in padded]
+    return padded
+
+
 def encode_reviews(args, df: pd.DataFrame):
     tokenizer = torch.hub.load(
         "huggingface/pytorch-transformers",
@@ -24,6 +36,7 @@ def encode_reviews(args, df: pd.DataFrame):
         "bert-base-cased" if args.use_bert else "xlnet-base-cased",
     )
 
+    now = time.time()
     encodings = tokenizer(
         df.text.to_list(),
         add_special_tokens=True,
@@ -35,15 +48,20 @@ def encode_reviews(args, df: pd.DataFrame):
         return_tensors="pt",
     )
 
+    print(f"Tokenization took {time.time()-now} seconds")
+
     analyzer = SentimentIntensityAnalyzer()
-    # VADER
     sentiments = torch.tensor(
         [
-            [
-                analyzer.polarity_scores(s)["compound"]
-                for s in nltk.tokenize.sent_tokenize(text)
-            ][: args.max_len_vader]
-            for text in df.text
+            pad_sequence(
+                [
+                    analyzer.polarity_scores(s)["compound"]
+                    for s in nltk.tokenize.sent_tokenize(text)
+                ],
+                pad_index=0,
+                to_length=args.max_len_vader,
+            )
+            for text in tqdm(df.text)
         ]
     )
     # we subtract 1 to get valid range [0,N)
@@ -60,7 +78,12 @@ class YelpDataset(Dataset):
     def __init__(self, args, data_path):
         super().__init__()
         self.data_path = data_path
-        yelp_reviews_df = pd.read_json(self.data_path, orient="records", lines=True)
+
+        yelp_reviews_df = pd.read_json(
+            self.data_path, orient="records", lines=True
+        ).iloc[
+            :9
+        ]  # TODO add back
         self.len = len(yelp_reviews_df)
         self.yelp_reviews = encode_reviews(args, yelp_reviews_df)
 
@@ -70,6 +93,12 @@ class YelpDataset(Dataset):
     def __getitem__(self, idx):
         encodings, sentiments, target = self.yelp_reviews
         return {k: v[idx] for k, v in encodings.items()}, sentiments[idx], target[idx]
+
+
+def collate(batch):
+    # list[(...)] -> ([]..)
+    print(f"{batch[0][0]['input_ids'].shape=}")
+    sys.exit()
 
 
 class YelpDataModule(pl.LightningDataModule):
@@ -110,7 +139,9 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=True,
             pin_memory=True,
-            num_workers=os.cpu_count(),
+            # num_workers=os.cpu_count(),
+            num_workers=1,
+            # collate_fn=collate,
         )
 
     def val_dataloader(self):
@@ -119,7 +150,9 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count(),
+            # num_workers=os.cpu_count(),
+            num_workers=1,
+            # collate_fn=collate,
         )
 
     def test_dataloader(self):
@@ -128,5 +161,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count(),
+            # num_workers=os.cpu_count(),
+            num_workers=1,
+            # collate_fn=collate,
         )

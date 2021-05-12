@@ -59,9 +59,6 @@ class LanguageModel(pl.LightningModule):
         self.output = Linear(100, 5)
 
     def forward(self, encodings, sentiments):
-        # TODO fix
-        # IndexError: index out of range in self
-        breakpoint()
         out = self.base_model(**encodings)
 
         out_hidden = out.last_hidden_state
@@ -81,13 +78,6 @@ class LanguageModel(pl.LightningModule):
         combined_input = torch.cat(combined_input, dim=1)
 
         lstm_drop = self.dropout(combined_input)
-
-        conv2d_kernel_H = 5  # along Word Length
-        conv2d_out_Hout = (
-            self.args.max_len - ((conv2d_kernel_H - 1) // 2) * 2
-        )  # Vocab Size
-
-        self.mp = MaxPool2d((conv2d_out_Hout, 1))
 
         logits = F.relu(self.dense(lstm_drop))
         logits = self.output(logits)
