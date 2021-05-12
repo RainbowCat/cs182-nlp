@@ -2,7 +2,13 @@
 .vscode
 
 *Icon*
+*.gdoc
+CS182 Project Spec (NLP)
+
+**/wordbrains
+
 **/.DS_Store
+*.zip
 *.tar
 *.json
 *.jsonl
