@@ -1,10 +1,10 @@
-import json
+import concurrent
 import os
 import pickle
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Optional
 
 import nltk
 import pandas as pd
@@ -18,6 +18,8 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 nltk.download("punkt")
 
+os.environ["TOKENIZERS_PARALLELISM"] = True
+
 
 def pad_sequence(numerized, pad_index, to_length, beginning=False):
     pad = numerized[:to_length]
@@ -25,11 +27,10 @@ def pad_sequence(numerized, pad_index, to_length, beginning=False):
         padded = [pad_index] * (to_length - len(pad)) + pad
     else:
         padded = pad + [pad_index] * (to_length - len(pad))
-    # mask = [w != pad_index for w in padded]
     return padded
 
 
-def encode_reviews(args, df: pd.DataFrame):
+def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
     tokenizer = torch.hub.load(
         "huggingface/pytorch-transformers",
         "tokenizer",
@@ -37,40 +38,43 @@ def encode_reviews(args, df: pd.DataFrame):
     )
 
     now = time.time()
-    encodings = tokenizer(
+    encoding = tokenizer(
         df.text.to_list(),
         add_special_tokens=True,
         max_length=args.max_len,
         return_token_type_ids=False,
         return_attention_mask=True,
         truncation=True,
-        padding="longest",
+        padding="max_length",
         return_tensors="pt",
     )
 
     print(f"Tokenization took {time.time()-now} seconds")
 
     analyzer = SentimentIntensityAnalyzer()
-    sentiments = torch.tensor(
-        [
-            pad_sequence(
-                [
-                    analyzer.polarity_scores(s)["compound"]
-                    for s in nltk.tokenize.sent_tokenize(text)
-                ],
-                pad_index=0,
-                to_length=args.max_len_vader,
-            )
-            for text in tqdm(df.text)
-        ]
-    )
-    # we subtract 1 to get valid range [0,N)
-    targets = torch.tensor(df.stars - 1)
+
+    def mk_seq(text):
+        return pad_sequence(
+            [
+                analyzer.polarity_scores(s)["compound"]
+                for s in nltk.tokenize.sent_tokenize(text)
+            ],
+            pad_index=0,
+            to_length=args.max_len_vader,
+        )
+
+    now = time.time()
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        sentiment = torch.tensor(list(executor.map(mk_seq, df.text)))
+    print(time.time() - now)
+
+    # We subtract 1 to get valid range [0, N).
+    target = torch.tensor(df.stars - 1) if stage != "test" else None
 
     return (
-        encodings,
-        sentiments,
-        targets,
+        encoding,
+        sentiment,
+        target,
     )
 
 
@@ -79,22 +83,21 @@ class YelpDataset(Dataset):
         super().__init__()
         self.data_path = data_path
 
-        yelp_reviews_df = pd.read_json(self.data_path, orient="records", lines=True)
-        self.len = len(yelp_reviews_df)
-        self.yelp_reviews = encode_reviews(args, yelp_reviews_df)
+        self.df = pd.read_json(self.data_path, orient="records", lines=True)
+        self.len = len(self.df)
+        self.yelp_reviews = encode_reviews(args, self.df)
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
         encodings, sentiments, target = self.yelp_reviews
-        return {k: v[idx] for k, v in encodings.items()}, sentiments[idx], target[idx]
-
-
-def collate(batch):
-    # list[(...)] -> ([]..)
-    #print(f"{batch[0][0]['input_ids'].shape=}")
-    sys.exit()
+        # add targets only if they exist
+        return (
+            {k: v[idx] for k, v in encodings.items()},
+            sentiments[idx],
+            target[idx] if target is not None else None,
+        )
 
 
 class YelpDataModule(pl.LightningDataModule):
@@ -105,24 +108,28 @@ class YelpDataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.args = args
-
-        PRECOMPUTED_DATA = Path(
-            "bert-tokens.pkl" if args.use_bert else "xlnet-tokens.pkl"
-        )
-
-        try:
-            with open(PRECOMPUTED_DATA, "rb") as f:
-                self.dataset = pickle.load(f)
-        except FileNotFoundError:
-            self.dataset = YelpDataset(args, data_path)
-            with open(PRECOMPUTED_DATA, "wb") as f:
-                pickle.dump(self.dataset, f)
+        self.data_path = data_path
 
     def setup(self, stage: Optional[str] = None):
 
+        if stage == "test":
+            self.dataset = YelpDataset(self.args, self.data_path)
+        else:
+            PRECOMPUTED_DATA = Path(
+                "bert-tokens.pkl" if self.args.use_bert else "xlnet-tokens.pkl"
+            )
+
+            try:
+                with open(PRECOMPUTED_DATA, "rb") as f:
+                    self.dataset = pickle.load(f)
+            except FileNotFoundError:
+                self.dataset = YelpDataset(self.args, self.data_path)
+                with open(PRECOMPUTED_DATA, "wb") as f:
+                    pickle.dump(self.dataset, f)
+
         N = len(self.dataset)
-        num_train = int(0.6 * N)
-        num_val = int(0.2 * N)
+        num_train = int(0.9 * N) if stage != "test" else 0
+        num_val = int(0.05 * N) if stage != "test" else 0
         num_test = N - num_train - num_val
 
         self.train_set, self.val_set, self.test_set = random_split(
@@ -135,7 +142,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=True,
             pin_memory=True,
-            num_workers=os.cpu_count() // 2,
+            num_workers=int(os.cpu_count() / 16),
         )
 
     def val_dataloader(self):
@@ -144,7 +151,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count() // 4,
+            num_workers=int(os.cpu_count() / 16),
         )
 
     def test_dataloader(self):
@@ -153,5 +160,5 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count() // 4,
+            num_workers=int(os.cpu_count() / 16),
         )
