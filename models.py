@@ -11,6 +11,7 @@ from torch.nn import (
     MaxPool2d,
     Sequential,
 )
+from torchmetrics import Accuracy, MetricCollection, StatScores
 
 
 class LanguageModel(pl.LightningModule):
@@ -23,6 +24,11 @@ class LanguageModel(pl.LightningModule):
         super().__init__()
         self.args = args
         self.save_hyperparameters()
+
+        metrics = MetricCollection([Accuracy(), StatScores()])
+        self.train_metrics = metrics.clone(prefix="train_")
+        self.val_metrics = metrics.clone(prefix="val_")
+        self.test_metrics = metrics.clone(prefix="test_")
 
         self.base_model = torch.hub.load(
             "huggingface/pytorch-transformers",
@@ -92,6 +98,7 @@ class LanguageModel(pl.LightningModule):
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
         self.log("train_loss", loss)
+        self.log_dict(self.train_metrics(prediction, target))
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -99,6 +106,7 @@ class LanguageModel(pl.LightningModule):
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
         self.log("val_loss", loss)
+        self.log_dict(self.val_metrics(prediction, target))
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -106,6 +114,7 @@ class LanguageModel(pl.LightningModule):
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
         self.log("test_loss", loss)
+        self.log_dict(self.test_metrics(prediction, target))
         return loss
 
     def configure_optimizers(self):

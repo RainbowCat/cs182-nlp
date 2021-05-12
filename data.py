@@ -29,7 +29,7 @@ def pad_sequence(numerized, pad_index, to_length, beginning=False):
     return padded
 
 
-def encode_reviews(args, df: pd.DataFrame):
+def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
     tokenizer = torch.hub.load(
         "huggingface/pytorch-transformers",
         "tokenizer",
@@ -37,7 +37,7 @@ def encode_reviews(args, df: pd.DataFrame):
     )
 
     now = time.time()
-    encodings = tokenizer(
+    encoding = tokenizer(
         df.text.to_list(),
         add_special_tokens=True,
         max_length=args.max_len,
@@ -51,7 +51,7 @@ def encode_reviews(args, df: pd.DataFrame):
     print(f"Tokenization took {time.time()-now} seconds")
 
     analyzer = SentimentIntensityAnalyzer()
-    sentiments = torch.tensor(
+    sentiment = torch.tensor(
         [
             pad_sequence(
                 [
@@ -64,13 +64,13 @@ def encode_reviews(args, df: pd.DataFrame):
             for text in tqdm(df.text)
         ]
     )
-    # we subtract 1 to get valid range [0,N)
-    targets = torch.tensor(df.stars - 1)
+    # We subtract 1 to get valid range [0, N).
+    target = torch.tensor(df.stars - 1) if stage != "test" else None
 
     return (
-        encodings,
-        sentiments,
-        targets,
+        encoding,
+        sentiment,
+        target,
     )
 
 
@@ -79,22 +79,21 @@ class YelpDataset(Dataset):
         super().__init__()
         self.data_path = data_path
 
-        yelp_reviews_df = pd.read_json(self.data_path, orient="records", lines=True)
-        self.len = len(yelp_reviews_df)
-        self.yelp_reviews = encode_reviews(args, yelp_reviews_df)
+        self.df = pd.read_json(self.data_path, orient="records", lines=True)
+        self.len = len(self.df)
+        self.yelp_reviews = encode_reviews(args, self.df)
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
         encodings, sentiments, target = self.yelp_reviews
-        return {k: v[idx] for k, v in encodings.items()}, sentiments[idx], target[idx]
-
-
-def collate(batch):
-    # list[(...)] -> ([]..)
-    print(f"{batch[0][0]['input_ids'].shape=}")
-    sys.exit()
+        # add targets only if they exist
+        return (
+            {k: v[idx] for k, v in encodings.items()},
+            sentiments[idx],
+            (target[idx],) if target is not None else None,
+        )
 
 
 class YelpDataModule(pl.LightningDataModule):
@@ -105,24 +104,28 @@ class YelpDataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.args = args
-
-        PRECOMPUTED_DATA = Path(
-            "bert-tokens.pkl" if args.use_bert else "xlnet-tokens.pkl"
-        )
-
-        try:
-            with open(PRECOMPUTED_DATA, "rb") as f:
-                self.dataset = pickle.load(f)
-        except FileNotFoundError:
-            self.dataset = YelpDataset(args, data_path)
-            with open(PRECOMPUTED_DATA, "wb") as f:
-                pickle.dump(self.dataset, f)
+        self.data_path = data_path
 
     def setup(self, stage: Optional[str] = None):
 
+        if stage == "test":
+            self.dataset = YelpDataset(self.args, self.data_path)
+        else:
+            PRECOMPUTED_DATA = Path(
+                "bert-tokens.pkl" if self.args.use_bert else "xlnet-tokens.pkl"
+            )
+
+            try:
+                with open(PRECOMPUTED_DATA, "rb") as f:
+                    self.dataset = pickle.load(f)
+            except FileNotFoundError:
+                self.dataset = YelpDataset(self.args, self.data_path)
+                with open(PRECOMPUTED_DATA, "wb") as f:
+                    pickle.dump(self.dataset, f)
+
         N = len(self.dataset)
-        num_train = int(0.6 * N)
-        num_val = int(0.2 * N)
+        num_train = int(0.6 * N) if stage != "test" else 0
+        num_val = int(0.2 * N) if stage != "test" else 0
         num_test = N - num_train - num_val
 
         self.train_set, self.val_set, self.test_set = random_split(

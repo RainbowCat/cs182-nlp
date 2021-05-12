@@ -1,89 +1,27 @@
 import json
 import sys
+from pathlib import Path
 
-import nltk
+import pytorch_lightning as pl
 import torch
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import data
 import models
 
-MAX_LEN = 128
-MAX_LEN_VADER = 40
-BATCH_SIZE = 32
-EPOCHS = 5
+with torch.no_grad():
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model_params = torch.load(
-    "models/training_checkpoint_oscar_vader.pt", map_location=device
-)
-
-
-model = models.LanguageModel(
-    vocab_size=MAX_LEN,
-    rnn_size=256,
-    vader_size=MAX_LEN_VADER,
-    use_vader=True,
-    use_bert=False,
-    use_cnn=True,
-)
-model.load_state_dict(model_params["model_state_dict"])
-model = model.to(device)
-model.eval()
-
-analyzer = SentimentIntensityAnalyzer()
-
-
-def predict_stars(text):
-    """
-    text - a SINGLE texts
-    """
-    # This is where you call your model to get the number of stars output
-    encodings = model.tokenizer.encode_plus(
-        text,
-        add_special_tokens=True,
-        max_length=MAX_LEN,
-        return_token_type_ids=False,
-        return_attention_mask=False,
-        truncation=True,
-        pad_to_max_length=False,
+    model = models.LanguageModel.load_from_checkpoint(
+        "lightning_logs/version_67/checkpoints/epoch=3-step=4999.ckpt",
+        map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
-    text_encoding = encodings.get("input_ids", [])
-    vectorized, _ = data.pad_sequence(text_encoding, 0, MAX_LEN)
-
-    sentence_list = nltk.tokenize.sent_tokenize(
-        text
-    )  # Text is one at a time anyway here
-    review_sentiment_sentence = []
-    for sentence in sentence_list:
-        vs = analyzer.polarity_scores(sentence)
-        review_sentiment_sentence.append(vs["compound"])
-    vader_sentiments, _ = data.pad_sequence(review_sentiment_sentence, 0, MAX_LEN_VADER)
-
-    # Place the data as a batch, even if there is only 1
-    vectorized = data.to_torch_long([vectorized])
-    vader_sentiments = data.to_torch_float([vader_sentiments])
-
-    p = model.predict(vectorized, vader_sentiments)
-    print(p, p[0], p[0].item())
-    return float(p[0].item())
+    model.eval()
+    dataset = data.YelpDataset(model.args, Path(sys.argv[1]))
+    encoding, sentiment = dataset.yelp_reviews[0], dataset.yelp_reviews[1]
+    # add 1 to turn into proper 5 star ratings
+    preds = (model(encoding, sentiment).argmax(1) + 1).float().tolist()
+    d = [{"review_id": id, "predicted_stars": s} for id, s in zip(dataset.df.review_id, preds)]
 
 
-if len(sys.argv) > 1:
-    validation_file = sys.argv[1]
-    with open("output.jsonl", "w") as fw:
-        with open(validation_file, "r") as fr:
-            for line in fr:
-                review = json.loads(line)
-                fw.write(
-                    json.dumps(
-                        {
-                            "review_id": review["review_id"],
-                            "predicted_stars": predict_stars(review["text"]),
-                        }
-                    )
-                    + "\n"
-                )
-    print("Output prediction file written")
-else:
-    print("No validation file given")
+with Path("out_tmp.json").open("w") as f:
+    for line in d:
+        print(json.dumps(line), file=f)

@@ -25,6 +25,7 @@ ipywidgets = "*"
 pytorch-lightning = "*"
 jupyter = "*"
 pudb = "*"
+torchmetrics = "*"
 
 [dev-packages]
 

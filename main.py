@@ -41,8 +41,7 @@ def main(
     trainer.fit(model, datamodule=datamodule)
     trainer.validate(model, datamodule=datamodule)
 
-
 if __name__ == "__main__":
     for use_bert, use_vader in itertools.product([True, False], repeat=2):
-        print(f"{use_bert, use_vader=}")
+        print(f"{use_bert, use_vader = }")
         main(use_bert, use_vader)
