@@ -1,3 +1,4 @@
+import concurrent
 import os
 import pickle
 import sys
@@ -16,6 +17,8 @@ from tqdm import tqdm
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 nltk.download("punkt")
+
+os.environ["TOKENIZERS_PARALLELISM"] = True
 
 
 def pad_sequence(numerized, pad_index, to_length, beginning=False):
@@ -49,19 +52,22 @@ def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
     print(f"Tokenization took {time.time()-now} seconds")
 
     analyzer = SentimentIntensityAnalyzer()
-    sentiment = torch.tensor(
-        [
-            pad_sequence(
-                [
-                    analyzer.polarity_scores(s)["compound"]
-                    for s in nltk.tokenize.sent_tokenize(text)
-                ],
-                pad_index=0,
-                to_length=args.max_len_vader,
-            )
-            for text in tqdm(df.text)
-        ]
-    )
+
+    def mk_seq(text):
+        return pad_sequence(
+            [
+                analyzer.polarity_scores(s)["compound"]
+                for s in nltk.tokenize.sent_tokenize(text)
+            ],
+            pad_index=0,
+            to_length=args.max_len_vader,
+        )
+
+    now = time.time()
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        sentiment = torch.tensor(list(executor.map(mk_seq, df.text)))
+    print(time.time() - now)
+
     # We subtract 1 to get valid range [0, N).
     target = torch.tensor(df.stars - 1) if stage != "test" else None
 

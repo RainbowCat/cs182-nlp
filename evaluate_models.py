@@ -11,7 +11,7 @@ import models
 
 
 def test_model(path: os.PathLike) -> None:
-    path=Path(path)
+    path = Path(path)
     with torch.no_grad():
 
         model = models.LanguageModel.load_from_checkpoint(
@@ -32,5 +32,7 @@ def test_model(path: os.PathLike) -> None:
         for line in d:
             print(json.dumps(line), file=f)
 
+
 if __name__ == "__main__":
-    test_model(sys.argv[1])
+    for p in Path("datasets").glob("*.jsonl"):
+        test_model(p)
