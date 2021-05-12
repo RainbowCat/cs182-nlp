@@ -42,7 +42,7 @@ def encode_reviews(args, df: pd.DataFrame, stage: str = "train"):
         return_token_type_ids=False,
         return_attention_mask=True,
         truncation=True,
-        padding="longest",
+        padding="max_length",
         return_tensors="pt",
     )
 
@@ -136,7 +136,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=True,
             pin_memory=True,
-            num_workers=int(os.cpu_count() / 1.2),
+            num_workers=int(os.cpu_count() / 16),
         )
 
     def val_dataloader(self):
@@ -145,7 +145,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=int(os.cpu_count() /1.2),
+            num_workers=int(os.cpu_count() / 16),
         )
 
     def test_dataloader(self):
@@ -154,5 +154,5 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=int(os.cpu_count() // 1.2),
+            num_workers=int(os.cpu_count() / 16),
         )

@@ -58,10 +58,12 @@ class LanguageModel(pl.LightningModule):
             batch_first=True,
             dropout=dropout,
         )
+        self.conv_alt = Linear(128 * 768, 764)
 
         self.dropout = Dropout(dropout)
 
         self.dense = Linear(768 - ((W - 1) // 2) * 2 // 1 + self.vader_size, 100)
+
         # classify yelp_reviews into 5 ratings
         self.output = Linear(100, 5)
 
@@ -69,15 +71,18 @@ class LanguageModel(pl.LightningModule):
         out = self.base_model(**encodings)
 
         out_hidden = out.last_hidden_state
-        batches_len, word_len, embedding_len = out_hidden.shape
-        out_hidden = out_hidden.reshape(batches_len, 1, word_len, embedding_len)
-        result = self.mp(self.conv(out_hidden))
-        input1 = result.squeeze(1).squeeze(1)
+        # B, max_len, 768
+
+        if self.args.use_cnn:
+            input1 = self.mp(self.conv(out_hidden.unsqueeze(1))).squeeze(1).squeeze(1)
+        else:
+            input1 = F.relu(self.conv_alt(out_hidden.flatten(1)))
 
         if self.args.use_vader:
             batch_size, vader_len = sentiments.shape
             output, _ = self.lstm(sentiments.reshape(batch_size, vader_len, 1))
             input2 = output.squeeze(2)
+
             combined_input = (input1, input2)
         else:
             combined_input = (input1,)  # Tuples need the stray comma

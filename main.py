@@ -12,6 +12,7 @@ import models
 def main(
     use_bert: bool,
     use_vader: bool,
+    use_cnn: bool,
     batch_size: int = 3000,
     epochs: int = 10,
     max_len: int = 128,
@@ -24,6 +25,7 @@ def main(
         max_len_vader=max_len_vader,
         use_bert=use_bert,
         use_vader=use_vader,
+        use_cnn=use_cnn,
     )
 
     model = models.LanguageModel(args)
@@ -41,7 +43,12 @@ def main(
     trainer.fit(model, datamodule=datamodule)
     trainer.validate(model, datamodule=datamodule)
 
+
 if __name__ == "__main__":
-    for use_bert, use_vader in itertools.product([True, False], repeat=2):
-        print(f"{use_bert, use_vader = }")
-        main(use_bert, use_vader)
+    for use_cnn, use_bert, use_vader in itertools.product(
+        [False, True],
+        [False, True],
+        [False, True],
+    ):
+        print(f"{use_bert, use_vader, use_cnn = }")
+        main(use_bert, use_vader, use_cnn)
