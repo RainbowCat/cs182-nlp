@@ -79,7 +79,7 @@ class YelpDataset(Dataset):
         super().__init__()
         self.data_path = data_path
 
-        self.df = pd.read_json(self.data_path, orient="records", lines=True).iloc[:200_000]
+        self.df = pd.read_json(self.data_path, orient="records", lines=True).iloc[:100_000]
         self.len = len(self.df)
         self.yelp_reviews = encode_reviews(args, self.df)
 

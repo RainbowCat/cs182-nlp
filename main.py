@@ -60,5 +60,5 @@ if __name__ == "__main__":
         use_vader=args.use_vader,
         use_cnn=args.use_cnn,
         epochs=2,
-        batch_size=1_024,
+        batch_size=2048,
     )
