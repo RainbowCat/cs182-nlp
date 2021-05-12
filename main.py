@@ -12,7 +12,7 @@ import models
 def main(
     use_bert: bool,
     use_vader: bool,
-    batch_size: int = 240,
+    batch_size: int = 3000,
     epochs: int = 10,
     max_len: int = 128,
     max_len_vader: int = 128,

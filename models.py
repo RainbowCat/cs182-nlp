@@ -25,7 +25,8 @@ class LanguageModel(pl.LightningModule):
         self.args = args
         self.save_hyperparameters()
 
-        metrics = MetricCollection([Accuracy(), StatScores()])
+        # metrics = MetricCollection([Accuracy(), StatScores(num_classes=5)])
+        metrics = MetricCollection([Accuracy()])
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
         self.test_metrics = metrics.clone(prefix="test_")
@@ -97,8 +98,8 @@ class LanguageModel(pl.LightningModule):
         encoding, sentiment, target = batch
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
-        self.log("train_loss", loss)
-        self.log_dict(self.train_metrics(prediction, target))
+        self.log("train_loss", loss, prog_bar=True)
+        self.log_dict(self.train_metrics(prediction.softmax(-1), target), prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -106,7 +107,7 @@ class LanguageModel(pl.LightningModule):
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
         self.log("val_loss", loss)
-        self.log_dict(self.val_metrics(prediction, target))
+        self.log_dict(self.val_metrics(prediction.softmax(-1), target))
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -114,8 +115,8 @@ class LanguageModel(pl.LightningModule):
         prediction = self(encoding, sentiment)
         loss = self.loss_fn(prediction, target)
         self.log("test_loss", loss)
-        self.log_dict(self.test_metrics(prediction, target))
+        self.log_dict(self.test_metrics(prediction.softmax(-1), target))
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters())

@@ -1,10 +1,9 @@
-import json
 import os
 import pickle
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Optional
 
 import nltk
 import pandas as pd
@@ -25,7 +24,6 @@ def pad_sequence(numerized, pad_index, to_length, beginning=False):
         padded = [pad_index] * (to_length - len(pad)) + pad
     else:
         padded = pad + [pad_index] * (to_length - len(pad))
-    # mask = [w != pad_index for w in padded]
     return padded
 
 
@@ -92,7 +90,7 @@ class YelpDataset(Dataset):
         return (
             {k: v[idx] for k, v in encodings.items()},
             sentiments[idx],
-            (target[idx],) if target is not None else None,
+            target[idx] if target is not None else None,
         )
 
 
@@ -124,8 +122,8 @@ class YelpDataModule(pl.LightningDataModule):
                     pickle.dump(self.dataset, f)
 
         N = len(self.dataset)
-        num_train = int(0.6 * N) if stage != "test" else 0
-        num_val = int(0.2 * N) if stage != "test" else 0
+        num_train = int(0.9 * N) if stage != "test" else 0
+        num_val = int(0.05 * N) if stage != "test" else 0
         num_test = N - num_train - num_val
 
         self.train_set, self.val_set, self.test_set = random_split(
@@ -138,7 +136,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=True,
             pin_memory=True,
-            num_workers=os.cpu_count() // 2,
+            num_workers=int(os.cpu_count() / 1.2),
         )
 
     def val_dataloader(self):
@@ -147,7 +145,7 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count() // 4,
+            num_workers=int(os.cpu_count() /1.2),
         )
 
     def test_dataloader(self):
@@ -156,5 +154,5 @@ class YelpDataModule(pl.LightningDataModule):
             batch_size=self.args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=os.cpu_count() // 4,
+            num_workers=int(os.cpu_count() // 1.2),
         )
