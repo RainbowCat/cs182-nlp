@@ -56,9 +56,9 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-id", type=int)
     args = parser.parse_args()
 
-    for use_bert, use_cnn, use_vader in itertools.product([False, True], repeat=3):
-        if Path(f"bert={use_bert}+cnn={use_cnn}+vader={use_vader}.ckpt").exists():
-            continue
+    # for use_bert, use_cnn, use_vader in itertools.product([False, True], repeat=3):
+        # if Path(f"bert={use_bert}+cnn={use_cnn}+vader={use_vader}.ckpt").exists():
+            # continue
 
         # main(
         #     use_bert=True, use_cnn=False, use_vader=False,
@@ -86,10 +86,18 @@ if __name__ == "__main__":
         #     batch_size=2048,
         # )
 
-        main(
-            use_bert=use_bert,
-            use_vader=use_vader,
-            use_cnn=use_cnn,
+        # main(
+        #     use_bert=use_bert,
+        #     use_vader=use_vader,
+        #     use_cnn=use_cnn,
+        #     epochs=2,
+        #     batch_size=2048 if args.use_bert else 512,
+        # )
+
+    main(
+            use_bert=True,
+            use_vader=False,
+            use_cnn=False,
             epochs=2,
             batch_size=2048 if args.use_bert else 512,
         )
