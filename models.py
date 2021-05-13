@@ -11,7 +11,12 @@ from torch.nn import (
     MaxPool2d,
     Sequential,
 )
-from torchmetrics import Accuracy, MetricCollection, StatScores
+from torchmetrics import (
+    Accuracy,
+    ConfusionMatrix,
+    MetricCollection,
+    StatScores,
+)
 
 
 class LanguageModel(pl.LightningModule):
@@ -26,6 +31,7 @@ class LanguageModel(pl.LightningModule):
         self.save_hyperparameters()
 
         # metrics = MetricCollection([Accuracy(), StatScores(num_classes=5)])
+        # metrics = MetricCollection([Accuracy(), ConfusionMatrix(num_classes=5)])
         metrics = MetricCollection([Accuracy()])
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")

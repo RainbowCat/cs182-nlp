@@ -1,6 +1,7 @@
 import argparse
 import itertools
 from argparse import Namespace
+from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
@@ -49,16 +50,46 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--use-bert", type=bool)
+    parser.add_argument("--use-bert", type=eval)
     parser.add_argument("--use-vader", type=bool)
     parser.add_argument("--use-cnn", type=bool)
     parser.add_argument("--gpu-id", type=int)
     args = parser.parse_args()
 
-    main(
-        use_bert=args.use_bert,
-        use_vader=args.use_vader,
-        use_cnn=args.use_cnn,
-        epochs=2,
-        batch_size=2048,
-    )
+    for use_bert, use_cnn, use_vader in itertools.product([False, True], repeat=3):
+        if Path(f"bert={use_bert}+cnn={use_cnn}+vader={use_vader}.ckpt").exists():
+            continue
+
+        # main(
+        #     use_bert=True, use_cnn=False, use_vader=False,
+        #     epochs=2,
+        #     batch_size=2048,
+        # )
+        # main(
+        #     use_bert=True, use_cnn=False, use_vader=True,
+        #     epochs=2,
+        #     batch_size=2048,
+        # )
+        # main(
+        #     use_bert=True, use_cnn=True, use_vader=True,
+        #     epochs=2,
+        #     batch_size=2048,
+        # )
+        # main(
+        #     use_bert=True, use_cnn=True, use_vader=True,
+        #     epochs=2,
+        #     batch_size=2048,
+        # )
+        # main(
+        #     use_bert=True, use_cnn=True, use_vader=True,
+        #     epochs=2,
+        #     batch_size=2048,
+        # )
+
+        main(
+            use_bert=use_bert,
+            use_vader=use_vader,
+            use_cnn=use_cnn,
+            epochs=2,
+            batch_size=2048 if args.use_bert else 512,
+        )
